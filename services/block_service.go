@@ -38,6 +38,10 @@ func (s *BlockAPIService) Block(
 		block = s.node.CurrentBlock()
 	}
 
+	if block == nil {
+		return nil, ErrBlockNotFound
+	}
+
 	return &types.BlockResponse{
 		Block: block,
 	}, nil

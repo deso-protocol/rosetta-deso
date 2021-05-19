@@ -44,6 +44,11 @@ var (
 		Code:    5,
 		Message: "Unable to get coins",
 	}
+
+	ErrBlockNotFound = &types.Error{
+		Code:    6,
+		Message: "Block not found",
+	}
 )
 
 // wrapErr adds details to the types.Error provided. We use a function

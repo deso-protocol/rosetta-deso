@@ -28,6 +28,10 @@ func (node *Node) GetBlock(hash string) *types.Block {
 func (node *Node) GetBlockAtHeight(height int64) *types.Block {
 	blockchain := node.GetBlockchain()
 	block := blockchain.GetBlockAtHeight(uint32(height))
+	if block == nil {
+		return nil
+	}
+
 	return node.convertBlock(block)
 }
 
