@@ -49,6 +49,31 @@ var (
 		Code:    6,
 		Message: "Block not found",
 	}
+
+	ErrMultipleSigners = &types.Error{
+		Code: 7,
+		Message: "A transaction can only have one signer",
+	}
+
+	ErrInvalidPublicKey = &types.Error{
+		Code: 8,
+		Message: "Unable to parse public key",
+	}
+
+	ErrInvalidCoin = &types.Error{
+		Code: 9,
+		Message: "Unable to parse coin",
+	}
+
+	ErrInvalidTransaction = &types.Error{
+		Code: 10,
+		Message: "Unable to parse transaction",
+	}
+
+	ErrInvalidSignature = &types.Error{
+		Code:    11,
+		Message: "Unable to sign",
+	}
 )
 
 // wrapErr adds details to the types.Error provided. We use a function

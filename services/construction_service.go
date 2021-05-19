@@ -86,7 +86,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		if operation.Type == bitclout.InputOpType {
 			txId, _, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
 			if err != nil {
-				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+				return nil, wrapErr(ErrInvalidCoin, err)
 			}
 
 			if signingAccount == nil {
@@ -94,7 +94,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 
 				publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
 				if err != nil {
-					return nil, ErrUnableToParseIntermediateResult
+					return nil, ErrInvalidPublicKey
 				}
 
 				bitcloutTxn.PublicKey = publicKeyBytes
@@ -102,7 +102,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 
 			// Can only have one signing account per transaction
 			if signingAccount.Address != operation.Account.Address {
-				return nil, ErrUnableToParseIntermediateResult
+				return nil, ErrMultipleSigners
 			}
 
 			bitcloutTxn.TxInputs = append(bitcloutTxn.TxInputs, &lib.BitCloutInput{
@@ -115,7 +115,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		} else if operation.Type == bitclout.OutputOpType {
 			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)
 			if err != nil {
-				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+				return nil, wrapErr(ErrInvalidPublicKey, err)
 			}
 
 			amount, err := types.AmountValue(operation.Amount)
@@ -150,22 +150,22 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, request *types.ConstructionCombineRequest) (*types.ConstructionCombineResponse, *types.Error) {
 	txnBytes, err := hex.DecodeString(request.UnsignedTransaction)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 	txn := &lib.MsgBitCloutTxn{}
 	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	signature, err := btcec.ParseDERSignature(request.Signatures[0].Bytes, btcec.S256())
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidSignature
 	}
 	txn.Signature = signature
 
 	txnBytes, err = txn.ToBytes(false)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	return &types.ConstructionCombineResponse{
@@ -176,12 +176,12 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 func (s *ConstructionAPIService) ConstructionHash(ctx context.Context, request *types.ConstructionHashRequest) (*types.TransactionIdentifierResponse, *types.Error) {
 	txnBytes, err := hex.DecodeString(request.SignedTransaction)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	txn := &lib.MsgBitCloutTxn{}
 	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	return &types.TransactionIdentifierResponse{
@@ -194,12 +194,12 @@ func (s *ConstructionAPIService) ConstructionHash(ctx context.Context, request *
 func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request *types.ConstructionParseRequest) (*types.ConstructionParseResponse, *types.Error) {
 	txnBytes, err := hex.DecodeString(request.Transaction)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	txn := &lib.MsgBitCloutTxn{}
 	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	var operations []*types.Operation
@@ -236,8 +236,8 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		}
 
 		// Can only have one signing account per transaction
-		if signer != op.Account {
-			return nil, ErrUnableToParseIntermediateResult
+		if signer.Address != op.Account.Address {
+			return nil, ErrMultipleSigners
 		}
 	}
 
@@ -287,12 +287,12 @@ func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request
 
 	txnBytes, err := hex.DecodeString(request.SignedTransaction)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	txn := &lib.MsgBitCloutTxn{}
 	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, ErrInvalidTransaction
 	}
 
 	blockchain := s.node.GetBlockchain()
