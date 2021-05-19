@@ -21,6 +21,9 @@ func (node *Node) GetBlock(hash string) *types.Block {
 
 	blockchain := node.GetBlockchain()
 	block := blockchain.GetBlock(blockHash)
+	if block == nil {
+		return nil
+	}
 
 	return node.convertBlock(block)
 }

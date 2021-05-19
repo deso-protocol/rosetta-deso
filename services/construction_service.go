@@ -74,29 +74,44 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 }
 
 func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
-	bitcloutTxn := &lib.MsgBitCloutTxn{}
+	bitcloutTxn := &lib.MsgBitCloutTxn{
+		TxInputs:  []*lib.BitCloutInput{},
+		TxOutputs: []*lib.BitCloutOutput{},
+		TxnMeta:   &lib.BasicTransferMetadata{},
+	}
 	var signingAccount *types.AccountIdentifier
+	inputIndex := uint32(0)
 
 	for _, operation := range request.Operations {
 		if operation.Type == bitclout.InputOpType {
-			txId, index, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
+			txId, _, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
 			if err != nil {
 				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
 
 			if signingAccount == nil {
 				signingAccount = operation.Account
+
+				publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
+				if err != nil {
+					return nil, ErrUnableToParseIntermediateResult
+				}
+
+				bitcloutTxn.PublicKey = publicKeyBytes
 			}
 
 			// Can only have one signing account per transaction
-			if signingAccount != operation.Account {
+			if signingAccount.Address != operation.Account.Address {
 				return nil, ErrUnableToParseIntermediateResult
 			}
 
 			bitcloutTxn.TxInputs = append(bitcloutTxn.TxInputs, &lib.BitCloutInput{
 				TxID: *txId,
-				Index: index,
+				Index: inputIndex,
 			})
+
+			// Increment the input index
+			inputIndex += 1
 		} else if operation.Type == bitclout.OutputOpType {
 			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)
 			if err != nil {
@@ -187,10 +202,10 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		return nil, ErrUnableToParseIntermediateResult
 	}
 
-	operations := []*types.Operation{}
+	var operations []*types.Operation
 	var signer *types.AccountIdentifier
 
-	for i, input := range(txn.TxInputs) {
+	for i, input := range txn.TxInputs {
 		networkIndex := int64(input.Index)
 
 		op := &types.Operation{
@@ -226,7 +241,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		}
 	}
 
-	for i, output := range(txn.TxOutputs) {
+	for i, output := range txn.TxOutputs {
 		networkIndex := int64(i)
 
 		op := &types.Operation{
