@@ -19,4 +19,5 @@ var (
 	}
 
 	SuccessStatus = "SUCCESS"
+	RevertedStatus = "REVERTED"
 )

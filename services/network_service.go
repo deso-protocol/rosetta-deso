@@ -60,11 +60,11 @@ func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.N
 		Allow: &types.Allow{
 			OperationStatuses: []*types.OperationStatus{
 				{
-					Status:     "Success",
+					Status:     bitclout.SuccessStatus,
 					Successful: true,
 				},
 				{
-					Status:     "Reverted",
+					Status:     bitclout.RevertedStatus,
 					Successful: false,
 				},
 			},
