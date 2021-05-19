@@ -34,9 +34,9 @@ jobs:
       - uses: actions/cache@v2
         with:
           path: ${{ env.BUILD_CACHE }}
-          key: ${{ runner.os }}-buildkit-v3-${{ github.sha }}
+          key: ${{ runner.os }}-buildkit-v4-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-buildkit-v3-
+            ${{ runner.os }}-buildkit-v4-
 
       - name: Install the latest buildkit release
         run: |
