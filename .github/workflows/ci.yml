@@ -29,7 +29,6 @@ jobs:
       - uses: actions/checkout@v2
         with:
           repository: 'bitclout/core'
-          token: ${{ secrets.TEMP_ACCESS_TOKEN }}
           path: core
 
       - uses: actions/cache@v2
