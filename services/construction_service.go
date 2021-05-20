@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	averageSendTxnKB = float64(180 / 1000)
+	averageSendTxnKB = 180.0 / 1000.0
 )
 
 type ConstructionAPIService struct {
@@ -295,11 +295,7 @@ func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request
 		return nil, ErrInvalidTransaction
 	}
 
-	blockchain := s.node.GetBlockchain()
-	mempool := s.node.GetMempool()
-	blockHeight := blockchain.BlockTip().Height
-
-	if err := blockchain.ValidateTransaction(txn, blockHeight+1, true, false, 0, mempool); err != nil {
+	if err := s.node.VerifyAndBroadcastTransaction(txn); err != nil {
 		return nil, ErrBitclout
 	}
 
