@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -49,7 +50,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 
 	utxoView, err := s.node.GetMempool().GetAugmentedUniversalView()
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
 	// Determine the network-wide feePerKB rate
@@ -80,6 +81,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		TxnMeta:   &lib.BasicTransferMetadata{},
 	}
 	var signingAccount *types.AccountIdentifier
+	inputAmounts := []string{}
 	inputIndex := uint32(0)
 
 	for _, operation := range request.Operations {
@@ -94,7 +96,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 
 				publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
 				if err != nil {
-					return nil, ErrInvalidPublicKey
+					return nil, wrapErr(ErrInvalidPublicKey, err)
 				}
 
 				bitcloutTxn.PublicKey = publicKeyBytes
@@ -109,6 +111,8 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 				TxID: *txId,
 				Index: inputIndex,
 			})
+
+			inputAmounts[inputIndex] = operation.Amount.Value
 
 			// Increment the input index
 			inputIndex += 1
@@ -130,17 +134,22 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		}
 	}
 
-	rawTxnBytes, err := bitcloutTxn.ToBytes(true)
+	bitcloutTxnBytes, err := bitcloutTxn.ToBytes(true)
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
+	unsignedTxn, err := json.Marshal(&transactionMetadata{
+		Transaction:    hex.EncodeToString(bitcloutTxnBytes),
+		InputAmounts:   inputAmounts,
+	})
+
 	return &types.ConstructionPayloadsResponse{
-		UnsignedTransaction: hex.EncodeToString(rawTxnBytes),
+		UnsignedTransaction: hex.EncodeToString(unsignedTxn),
 		Payloads:            []*types.SigningPayload{
 			{
 				AccountIdentifier: signingAccount,
-				Bytes: rawTxnBytes,
+				Bytes: bitcloutTxnBytes,
 				SignatureType: types.Ecdsa,
 			},
 		},
@@ -148,40 +157,51 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 }
 
 func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, request *types.ConstructionCombineRequest) (*types.ConstructionCombineResponse, *types.Error) {
-	txnBytes, err := hex.DecodeString(request.UnsignedTransaction)
+	unsignedTxnBytes, err := hex.DecodeString(request.UnsignedTransaction)
 	if err != nil {
-		return nil, ErrInvalidTransaction
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
-	txn := &lib.MsgBitCloutTxn{}
-	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrInvalidTransaction
+
+	var unsignedTxn transactionMetadata
+	if err := json.Unmarshal(unsignedTxnBytes, &unsignedTxn); err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
+	bitcloutTxnBytes, err := hex.DecodeString(unsignedTxn.Transaction)
+	if err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
+	bitcloutTxn := &lib.MsgBitCloutTxn{}
+	if err = bitcloutTxn.FromBytes(bitcloutTxnBytes); err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	signature, err := btcec.ParseDERSignature(request.Signatures[0].Bytes, btcec.S256())
 	if err != nil {
-		return nil, ErrInvalidSignature
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
-	txn.Signature = signature
+	bitcloutTxn.Signature = signature
 
-	txnBytes, err = txn.ToBytes(false)
+	signedTxnBytes, err := bitcloutTxn.ToBytes(false)
 	if err != nil {
-		return nil, ErrInvalidTransaction
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	return &types.ConstructionCombineResponse{
-		SignedTransaction: hex.EncodeToString(txnBytes),
+		SignedTransaction: hex.EncodeToString(signedTxnBytes),
 	}, nil
 }
 
 func (s *ConstructionAPIService) ConstructionHash(ctx context.Context, request *types.ConstructionHashRequest) (*types.TransactionIdentifierResponse, *types.Error) {
 	txnBytes, err := hex.DecodeString(request.SignedTransaction)
 	if err != nil {
-		return nil, ErrInvalidTransaction
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	txn := &lib.MsgBitCloutTxn{}
 	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrInvalidTransaction
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	return &types.TransactionIdentifierResponse{
@@ -194,18 +214,28 @@ func (s *ConstructionAPIService) ConstructionHash(ctx context.Context, request *
 func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request *types.ConstructionParseRequest) (*types.ConstructionParseResponse, *types.Error) {
 	txnBytes, err := hex.DecodeString(request.Transaction)
 	if err != nil {
-		return nil, ErrInvalidTransaction
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	txn := &lib.MsgBitCloutTxn{}
-	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrInvalidTransaction
+	var txn transactionMetadata
+	if err := json.Unmarshal(txnBytes, &txn); err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
+	bitcloutTxnBytes, err := hex.DecodeString(txn.Transaction)
+	if err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
+	bitcloutTxn := &lib.MsgBitCloutTxn{}
+	if err = bitcloutTxn.FromBytes(bitcloutTxnBytes); err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	var operations []*types.Operation
 	var signer *types.AccountIdentifier
 
-	for i, input := range txn.TxInputs {
+	for i, input := range bitcloutTxn.TxInputs {
 		networkIndex := int64(input.Index)
 
 		op := &types.Operation{
@@ -215,7 +245,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 			},
 
 			Account: &types.AccountIdentifier{
-				Address: lib.Base58CheckEncode(txn.PublicKey, false, s.node.Params),
+				Address: lib.Base58CheckEncode(bitcloutTxn.PublicKey, false, s.node.Params),
 			},
 
 			CoinChange: &types.CoinChange{
@@ -223,6 +253,11 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 					Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), input.Index),
 				},
 				CoinAction: types.CoinSpent,
+			},
+
+			Amount: &types.Amount{
+				Value: txn.InputAmounts[input.Index],
+				Currency: s.config.Currency,
 			},
 
 			Status: &bitclout.SuccessStatus,
@@ -241,12 +276,12 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		}
 	}
 
-	for i, output := range txn.TxOutputs {
+	for i, output := range bitcloutTxn.TxOutputs {
 		networkIndex := int64(i)
 
 		op := &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
-				Index:        int64(len(txn.TxInputs) + i),
+				Index:        int64(len(bitcloutTxn.TxInputs) + i),
 				NetworkIndex: &networkIndex,
 			},
 
@@ -261,7 +296,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 
 			CoinChange: &types.CoinChange{
 				CoinIdentifier: &types.CoinIdentifier{
-					Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
+					Identifier: fmt.Sprintf("%v:%d", bitcloutTxn.Hash().String(), networkIndex),
 				},
 				CoinAction: types.CoinCreated,
 			},
@@ -287,16 +322,16 @@ func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request
 
 	txnBytes, err := hex.DecodeString(request.SignedTransaction)
 	if err != nil {
-		return nil, ErrInvalidTransaction
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	txn := &lib.MsgBitCloutTxn{}
 	if err = txn.FromBytes(txnBytes); err != nil {
-		return nil, ErrInvalidTransaction
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	if err := s.node.VerifyAndBroadcastTransaction(txn); err != nil {
-		return nil, ErrBitclout
+		return nil, wrapErr(ErrBitclout, err)
 	}
 
 	return &types.TransactionIdentifierResponse{
