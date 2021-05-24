@@ -20,4 +20,6 @@ var (
 
 	SuccessStatus = "SUCCESS"
 	RevertedStatus = "REVERTED"
+
+	MinFeeRateNanosPerKB = uint64(1000)
 )

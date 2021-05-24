@@ -13,6 +13,7 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	merkletree "github.com/laser/go-merkle-tree"
 )
 
 const (
@@ -55,6 +56,10 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 
 	// Determine the network-wide feePerKB rate
 	feePerKB := utxoView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
+	if feePerKB == 0 {
+		feePerKB = bitclout.MinFeeRateNanosPerKB
+	}
+
 	metadata, err := types.MarshalMap(&constructionMetadata{FeePerKB: feePerKB})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -81,12 +86,11 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		TxnMeta:   &lib.BasicTransferMetadata{},
 	}
 	var signingAccount *types.AccountIdentifier
-	inputAmounts := []string{}
-	inputIndex := uint32(0)
+	var inputAmounts []string
 
 	for _, operation := range request.Operations {
 		if operation.Type == bitclout.InputOpType {
-			txId, _, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
+			txId, txIndex, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
 			if err != nil {
 				return nil, wrapErr(ErrInvalidCoin, err)
 			}
@@ -109,13 +113,10 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 
 			bitcloutTxn.TxInputs = append(bitcloutTxn.TxInputs, &lib.BitCloutInput{
 				TxID: *txId,
-				Index: inputIndex,
+				Index: txIndex,
 			})
 
-			inputAmounts[inputIndex] = operation.Amount.Value
-
-			// Increment the input index
-			inputIndex += 1
+			inputAmounts = append(inputAmounts, operation.Amount.Value)
 		} else if operation.Type == bitclout.OutputOpType {
 			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)
 			if err != nil {
@@ -144,12 +145,14 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		InputAmounts:   inputAmounts,
 	})
 
+	unsignedBytes := merkletree.Sha256DoubleHash(bitcloutTxnBytes)
+
 	return &types.ConstructionPayloadsResponse{
 		UnsignedTransaction: hex.EncodeToString(unsignedTxn),
 		Payloads:            []*types.SigningPayload{
 			{
 				AccountIdentifier: signingAccount,
-				Bytes: bitcloutTxnBytes,
+				Bytes: unsignedBytes,
 				SignatureType: types.Ecdsa,
 			},
 		},

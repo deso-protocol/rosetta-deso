@@ -208,7 +208,6 @@ func (node *Node) Start() {
 	maxInboundPeers := uint32(125)
 	limitOneInboundConnectionPerIP := true
 	rateLimitFeerateNanosPerKB := uint64(0)
-	minFeeRateNanosPerKB := uint64(1000)
 	stallTimeoutSeconds := uint64(900)
 
 	node.Server, err = lib.NewServer(
@@ -223,7 +222,7 @@ func (node *Node) Start() {
 		minerCount,
 		limitOneInboundConnectionPerIP,
 		rateLimitFeerateNanosPerKB,
-		minFeeRateNanosPerKB,
+		MinFeeRateNanosPerKB,
 		stallTimeoutSeconds,
 		bitcoinDataDir,
 		maxBlockTemplatesToCache,

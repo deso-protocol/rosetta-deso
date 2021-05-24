@@ -95,6 +95,9 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 					Address: lib.Base58CheckEncode(txn.PublicKey, false, node.Params),
 				},
 
+				// TODO: Build a transaction index
+				Amount: &types.Amount{},
+
 				CoinChange: &types.CoinChange{
 					CoinIdentifier: &types.CoinIdentifier{
 						Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), input.Index),

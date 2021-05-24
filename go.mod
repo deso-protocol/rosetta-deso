@@ -17,6 +17,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/badger/v3 v3.2011.1
 	github.com/golang/glog v0.0.0-20210429001901-424d2337a529
+	github.com/laser/go-merkle-tree v0.0.0-20180821204614-16c2f6ea4444
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/sasha-s/go-deadlock v0.2.0
 	github.com/spf13/cobra v1.1.3
