@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"strconv"
 
 	"github.com/bitclout/core/lib"
@@ -180,11 +181,12 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	signature, err := btcec.ParseDERSignature(request.Signatures[0].Bytes, btcec.S256())
-	if err != nil {
-		return nil, wrapErr(ErrInvalidSignature, err)
+	// signature is in form of R || S
+	signatureBytes := request.Signatures[0].Bytes
+	bitcloutTxn.Signature = &btcec.Signature{
+		R: new(big.Int).SetBytes(signatureBytes[:32]),
+		S: new(big.Int).SetBytes(signatureBytes[32:64]),
 	}
-	bitcloutTxn.Signature = signature
 
 	signedTxnBytes, err := bitcloutTxn.ToBytes(false)
 	if err != nil {
