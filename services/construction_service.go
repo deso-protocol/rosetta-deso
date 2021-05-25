@@ -51,7 +51,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 
 	utxoView, err := s.node.GetMempool().GetAugmentedUniversalView()
 	if err != nil {
-		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		return nil, wrapErr(ErrBitclout, err)
 	}
 
 	// Determine the network-wide feePerKB rate
@@ -137,7 +137,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 
 	bitcloutTxnBytes, err := bitcloutTxn.ToBytes(true)
 	if err != nil {
-		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
@@ -182,7 +182,7 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 
 	signature, err := btcec.ParseDERSignature(request.Signatures[0].Bytes, btcec.S256())
 	if err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
+		return nil, wrapErr(ErrInvalidSignature, err)
 	}
 	bitcloutTxn.Signature = signature
 

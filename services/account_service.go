@@ -34,19 +34,19 @@ func (s *AccountAPIService) AccountBalance(
 
 	publicKeyBytes, _, err := lib.Base58CheckDecode(request.AccountIdentifier.Address)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
 	mempool := s.node.GetMempool()
 
 	utxoView, err := mempool.GetAugmentedUtxoViewForPublicKey(publicKeyBytes, nil)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, wrapErr(ErrBitclout, err)
 	}
 
 	utxoEntries, err := utxoView.GetUnspentUtxoEntrysForPublicKey(publicKeyBytes)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, wrapErr(ErrBitclout, err)
 	}
 
 	blockchain := s.node.GetBlockchain()
@@ -88,19 +88,19 @@ func (s *AccountAPIService) AccountCoins(
 
 	publicKeyBytes, _, err := lib.Base58CheckDecode(request.AccountIdentifier.Address)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
 	mempool := s.node.GetMempool()
 
 	utxoView, err := mempool.GetAugmentedUtxoViewForPublicKey(publicKeyBytes, nil)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, wrapErr(ErrBitclout, err)
 	}
 
 	utxoEntries, err := utxoView.GetUnspentUtxoEntrysForPublicKey(publicKeyBytes)
 	if err != nil {
-		return nil, ErrUnableToParseIntermediateResult
+		return nil, wrapErr(ErrBitclout, err)
 	}
 
 	blockchain := s.node.GetBlockchain()
