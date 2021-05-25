@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"github.com/bitclout/core/lib"
 	"strconv"
 
 	"github.com/bitclout/rosetta-bitclout/bitclout"
@@ -42,11 +43,24 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 		})
 	}
 
+	blockchain := s.node.GetBlockchain()
+	targetIndex := int64(blockchain.HeaderTip().Height)
+	currentIndex := int64(blockchain.BlockTip().Height)
+	stage := blockchain.ChainState().String()
+	synced := blockchain.ChainState() == lib.SyncStateFullyCurrent
+	syncStatus := &types.SyncStatus{
+		CurrentIndex: &currentIndex,
+		TargetIndex:  &targetIndex,
+		Stage:        &stage,
+		Synced:       &synced,
+	}
+
 	return &types.NetworkStatusResponse{
 		CurrentBlockIdentifier: currentBlock.BlockIdentifier,
 		CurrentBlockTimestamp:  currentBlock.Timestamp,
 		GenesisBlockIdentifier: genesisBlock.BlockIdentifier,
 		Peers:                  peers,
+		SyncStatus:             syncStatus,
 	}, nil
 }
 
