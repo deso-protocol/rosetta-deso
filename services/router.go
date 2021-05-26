@@ -1,17 +1,15 @@
 package services
 
 import (
-	"net/http"
-
 	"github.com/bitclout/rosetta-bitclout/bitclout"
-	"github.com/bitclout/rosetta-bitclout/configuration"
+	"net/http"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/server"
 )
 
 func NewBlockchainRouter(
-	config *configuration.Configuration,
+	config *bitclout.Config,
 	node *bitclout.Node,
 	asserter *asserter.Asserter,
 ) http.Handler {

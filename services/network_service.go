@@ -6,17 +6,16 @@ import (
 	"strconv"
 
 	"github.com/bitclout/rosetta-bitclout/bitclout"
-	"github.com/bitclout/rosetta-bitclout/configuration"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 type NetworkAPIService struct {
-	config *configuration.Configuration
+	config *bitclout.Config
 	node   *bitclout.Node
 }
 
-func NewNetworkAPIService(config *configuration.Configuration, node *bitclout.Node) server.NetworkAPIServicer {
+func NewNetworkAPIService(config *bitclout.Config, node *bitclout.Node) server.NetworkAPIServicer {
 	return &NetworkAPIService{
 		config: config,
 		node:   node,

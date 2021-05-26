@@ -1,27 +1,15 @@
-package configuration
+package bitclout
 
 import (
 	"errors"
 	"strings"
 
 	"github.com/bitclout/core/lib"
-	"github.com/bitclout/rosetta-bitclout/bitclout"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/spf13/viper"
 )
 
-type Mode string
-type Network string
-
-const (
-	Online  Mode = "ONLINE"
-	Offline Mode = "OFFLINE"
-
-	Mainnet Network = "MAINNET"
-	Testnet Network = "TESTNET"
-)
-
-type Configuration struct {
+type Config struct {
 	Mode                   Mode
 	Network                *types.NetworkIdentifier
 	Params                 *lib.BitCloutParams
@@ -31,10 +19,11 @@ type Configuration struct {
 	NodePort               int
 	DataDirectory          string
 	MinerPublicKeys        []string
+	TXIndex                bool
 }
 
-func LoadConfiguration() (*Configuration, error) {
-	result := Configuration{}
+func LoadConfig() (*Config, error) {
+	result := Config{}
 
 	switch result.Mode = Mode(strings.ToUpper(viper.GetString("mode"))); result.Mode {
 	case Online, Offline:
@@ -42,7 +31,7 @@ func LoadConfiguration() (*Configuration, error) {
 		return nil, errors.New("unknown mode")
 	}
 
-	result.Currency = &bitclout.Currency
+	result.Currency = &Currency
 
 	switch network := Network(strings.ToUpper(viper.GetString("network"))); network {
 	case Mainnet:
@@ -67,6 +56,7 @@ func LoadConfiguration() (*Configuration, error) {
 	result.Port = viper.GetInt("port")
 	result.NodePort = viper.GetInt("node-port")
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
+	result.TXIndex = viper.GetBool("txindex")
 
 	return &result, nil
 }

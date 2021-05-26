@@ -19,7 +19,6 @@ RUN go mod download
 # include rosetta-bitclout src
 COPY rosetta-bitclout/bitclout      bitclout
 COPY rosetta-bitclout/cmd           cmd
-COPY rosetta-bitclout/configuration configuration
 COPY rosetta-bitclout/services      services
 COPY rosetta-bitclout/main.go       .
 

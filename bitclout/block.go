@@ -85,6 +85,15 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 		for _, input := range txn.TxInputs {
 			networkIndex := int64(input.Index)
 
+			amount := types.Amount{}
+			if node.TXIndex != nil {
+				txn, _ := lib.DbGetTxindexFullTransactionByTxID(node.TXIndex.TXIndexChain.DB(),
+					node.Server.GetBlockchain().DB(), &input.TxID)
+				if txn != nil {
+					amount.Value = strconv.FormatUint(txn.TxOutputs[input.Index].AmountNanos, 10)
+				}
+			}
+
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
 					Index:        int64(len(transaction.Operations)),
@@ -96,7 +105,7 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 				},
 
 				// TODO: Build a transaction index
-				Amount: &types.Amount{},
+				Amount: &amount,
 
 				CoinChange: &types.CoinChange{
 					CoinIdentifier: &types.CoinIdentifier{

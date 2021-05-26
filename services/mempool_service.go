@@ -2,19 +2,18 @@ package services
 
 import (
 	"context"
-
 	"github.com/bitclout/rosetta-bitclout/bitclout"
-	"github.com/bitclout/rosetta-bitclout/configuration"
+
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 type MempoolAPIService struct {
-	config *configuration.Configuration
+	config *bitclout.Config
 	node   *bitclout.Node
 }
 
-func NewMempoolAPIService(config *configuration.Configuration, node *bitclout.Node) server.MempoolAPIServicer {
+func NewMempoolAPIService(config *bitclout.Config, node *bitclout.Node) server.MempoolAPIServicer {
 	return &MempoolAPIService{
 		config: config,
 		node:   node,
@@ -22,7 +21,7 @@ func NewMempoolAPIService(config *configuration.Configuration, node *bitclout.No
 }
 
 func (s *MempoolAPIService) Mempool(ctx context.Context, request *types.NetworkRequest) (*types.MempoolResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		// TODO: Implement/Abstract
 		return nil, ErrUnavailableOffline
 		//return nil, wrapErr(ErrUnavailableOffline, nil)
@@ -45,7 +44,7 @@ func (s *MempoolAPIService) Mempool(ctx context.Context, request *types.NetworkR
 }
 
 func (s *MempoolAPIService) MempoolTransaction(ctx context.Context, request *types.MempoolTransactionRequest) (*types.MempoolTransactionResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		return nil, ErrUnavailableOffline
 	}
 

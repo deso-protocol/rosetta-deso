@@ -3,21 +3,20 @@ package services
 import (
 	"context"
 	"fmt"
+	"github.com/bitclout/rosetta-bitclout/bitclout"
 	"strconv"
 
 	"github.com/bitclout/core/lib"
-	"github.com/bitclout/rosetta-bitclout/bitclout"
-	"github.com/bitclout/rosetta-bitclout/configuration"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 type AccountAPIService struct {
-	config *configuration.Configuration
+	config *bitclout.Config
 	node   *bitclout.Node
 }
 
-func NewAccountAPIService(config *configuration.Configuration, node *bitclout.Node) server.AccountAPIServicer {
+func NewAccountAPIService(config *bitclout.Config, node *bitclout.Node) server.AccountAPIServicer {
 	return &AccountAPIService{
 		config: config,
 		node:   node,
@@ -28,7 +27,7 @@ func (s *AccountAPIService) AccountBalance(
 	ctx context.Context,
 	request *types.AccountBalanceRequest,
 ) (*types.AccountBalanceResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		return nil, ErrUnavailableOffline
 	}
 
@@ -82,7 +81,7 @@ func (s *AccountAPIService) AccountCoins(
 	ctx context.Context,
 	request *types.AccountCoinsRequest,
 ) (*types.AccountCoinsResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		return nil, ErrUnavailableOffline
 	}
 
