@@ -2,19 +2,18 @@ package services
 
 import (
 	"context"
-
 	"github.com/bitclout/rosetta-bitclout/bitclout"
-	"github.com/bitclout/rosetta-bitclout/configuration"
+
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 type BlockAPIService struct {
-	config *configuration.Configuration
+	config *bitclout.Config
 	node   *bitclout.Node
 }
 
-func NewBlockAPIService(config *configuration.Configuration, node *bitclout.Node) server.BlockAPIServicer {
+func NewBlockAPIService(config *bitclout.Config, node *bitclout.Node) server.BlockAPIServicer {
 	return &BlockAPIService{
 		config: config,
 		node:   node,
@@ -25,7 +24,7 @@ func (s *BlockAPIService) Block(
 	ctx context.Context,
 	request *types.BlockRequest,
 ) (*types.BlockResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		return nil, ErrUnavailableOffline
 	}
 
@@ -51,7 +50,7 @@ func (s *BlockAPIService) BlockTransaction(
 	ctx context.Context,
 	request *types.BlockTransactionRequest,
 ) (*types.BlockTransactionResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		return nil, ErrUnavailableOffline
 	}
 

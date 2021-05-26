@@ -10,7 +10,6 @@ import (
 
 	"github.com/bitclout/core/lib"
 	"github.com/bitclout/rosetta-bitclout/bitclout"
-	"github.com/bitclout/rosetta-bitclout/configuration"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -22,11 +21,11 @@ const (
 )
 
 type ConstructionAPIService struct {
-	config *configuration.Configuration
+	config *bitclout.Config
 	node   *bitclout.Node
 }
 
-func NewConstructionAPIService(config *configuration.Configuration, node *bitclout.Node) server.ConstructionAPIServicer {
+func NewConstructionAPIService(config *bitclout.Config, node *bitclout.Node) server.ConstructionAPIServicer {
 	return &ConstructionAPIService{
 		config: config,
 		node:   node,
@@ -46,7 +45,7 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 }
 
 func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, request *types.ConstructionMetadataRequest) (*types.ConstructionMetadataResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		return nil, ErrUnavailableOffline
 	}
 
@@ -321,7 +320,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 }
 
 func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request *types.ConstructionSubmitRequest) (*types.TransactionIdentifierResponse, *types.Error) {
-	if s.config.Mode != configuration.Online {
+	if s.config.Mode != bitclout.Online {
 		return nil, ErrUnavailableOffline
 	}
 

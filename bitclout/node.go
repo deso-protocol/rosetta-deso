@@ -138,51 +138,48 @@ func addSeedAddrsFromPrefixes(bitcloutAddrMgr *addrmgr.AddrManager, params *lib.
 
 type Node struct {
 	*lib.Server
-	DataDirectory   string
-	Online          bool
-	Params          *lib.BitCloutParams
-	Port            int
-	MinerPublicKeys []string
+	Params  *lib.BitCloutParams
+	TXIndex *lib.TXIndex
+	Online   bool
+	Config   *Config
 }
 
-func NewNode(online bool, dataDirectory string, params *lib.BitCloutParams, port int, minerPublicKeys []string) *Node {
+func NewNode(config *Config) *Node {
 	result := Node{}
-	result.DataDirectory = dataDirectory
-	result.Online = online
-	result.Params = params
-	result.Port = port
-	result.MinerPublicKeys = minerPublicKeys
+	result.Config = config
+	result.Online = config.Mode == Online
+	result.Params = config.Params
 
 	return &result
 }
 
 func (node *Node) Start() {
-	bitcloutAddrMgr := addrmgr.New(node.DataDirectory, net.LookupIP)
+	bitcloutAddrMgr := addrmgr.New(node.Config.DataDirectory, net.LookupIP)
 	bitcloutAddrMgr.Start()
 
-	listeningAddrs, listeners := getAddrsToListenOn(node.Port)
+	listeningAddrs, listeners := getAddrsToListenOn(node.Config.NodePort)
 
 	if node.Online {
 		for _, addr := range listeningAddrs {
 			netAddr := wire.NewNetAddress(&addr, 0)
-			bitcloutAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
+			_ = bitcloutAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
 		}
 
-		for _, host := range node.Params.DNSSeeds {
-			addIPsForHost(bitcloutAddrMgr, host, node.Params)
+		for _, host := range node.Config.Params.DNSSeeds {
+			addIPsForHost(bitcloutAddrMgr, host, node.Config.Params)
 		}
 
-		go addSeedAddrsFromPrefixes(bitcloutAddrMgr, node.Params)
+		go addSeedAddrsFromPrefixes(bitcloutAddrMgr, node.Config.Params)
 	}
 
-	bitcoinDataDir := filepath.Join(node.DataDirectory, "bitcoin_manager")
+	bitcoinDataDir := filepath.Join(node.Config.DataDirectory, "bitcoin_manager")
 	if err := os.MkdirAll(bitcoinDataDir, os.ModePerm); err != nil {
-		fmt.Errorf("Could not create Bitcoin datadir (%s): %v", node.DataDirectory, err)
+		fmt.Errorf("Could not create Bitcoin datadir (%s): %v", node.Config.DataDirectory, err)
 
 		panic(err)
 	}
 
-	dbDir := lib.GetBadgerDbPath(node.DataDirectory)
+	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
 	opts := badger.DefaultOptions(dbDir)
 	opts.ValueDir = dbDir
 	opts.MemTableSize = 1024 << 20
@@ -201,26 +198,23 @@ func (node *Node) Start() {
 	mempoolDumpDir := ""
 	disableNetworking := !node.Online
 	readOnly := !node.Online
-	ignoreInboundPeerInvMessages := false
 	bitcoinConnectPeer := ""
-	ignoreUnminedBitcoinTxns := false
 	targetOutboundPeers := uint32(8)
 	maxInboundPeers := uint32(125)
-	limitOneInboundConnectionPerIP := true
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
 	node.Server, err = lib.NewServer(
-		node.Params,
+		node.Config.Params,
 		listeners,
 		bitcloutAddrMgr,
 		connectIPAddrs,
 		db,
 		targetOutboundPeers,
 		maxInboundPeers,
-		node.MinerPublicKeys,
+		node.Config.MinerPublicKeys,
 		minerCount,
-		limitOneInboundConnectionPerIP,
+		true,
 		rateLimitFeerateNanosPerKB,
 		MinFeeRateNanosPerKB,
 		stallTimeoutSeconds,
@@ -229,13 +223,13 @@ func (node *Node) Start() {
 		minBlockUpdateInterval,
 		blockCypherAPIKey,
 		true,
-		node.DataDirectory,
+		node.Config.DataDirectory,
 		mempoolDumpDir,
 		disableNetworking,
 		readOnly,
-		ignoreInboundPeerInvMessages,
+		false,
 		bitcoinConnectPeer,
-		ignoreUnminedBitcoinTxns,
+		false,
 		nil,
 		"",
 		[]string{},
@@ -246,4 +240,13 @@ func (node *Node) Start() {
 	}
 
 	node.Server.Start()
+
+	if node.Config.TXIndex {
+		node.TXIndex, err = lib.NewTXIndex(node.Server, node.Config.Params, node.Config.DataDirectory)
+		if err != nil {
+			glog.Fatal(err)
+		}
+
+		node.TXIndex.Start()
+	}
 }
