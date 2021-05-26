@@ -85,12 +85,16 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 		for _, input := range txn.TxInputs {
 			networkIndex := int64(input.Index)
 
+			// Fetch the input amount from TXIndex
 			amount := types.Amount{}
 			if node.TXIndex != nil {
 				txn, _ := lib.DbGetTxindexFullTransactionByTxID(node.TXIndex.TXIndexChain.DB(),
 					node.Server.GetBlockchain().DB(), &input.TxID)
 				if txn != nil {
-					amount.Value = strconv.FormatUint(txn.TxOutputs[input.Index].AmountNanos, 10)
+					output := txn.TxOutputs[input.Index]
+					if output != nil {
+						amount.Value = strconv.FormatUint(output.AmountNanos, 10)
+					}
 				}
 			}
 
