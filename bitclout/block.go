@@ -93,7 +93,7 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 				if txn != nil {
 					output := txn.TxOutputs[input.Index]
 					if output != nil {
-						amount.Value = strconv.FormatUint(output.AmountNanos, 10)
+						amount.Value = strconv.FormatInt(int64(output.AmountNanos) * -1, 10)
 					}
 				}
 			}
