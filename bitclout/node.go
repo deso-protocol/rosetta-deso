@@ -242,7 +242,7 @@ func (node *Node) Start() {
 	node.Server.Start()
 
 	if node.Config.TXIndex {
-		node.TXIndex, err = lib.NewTXIndex(node.Server, node.Config.Params, node.Config.DataDirectory)
+		node.TXIndex, err = lib.NewTXIndex(node.Server.GetBlockchain(), node.Server.GetBitcoinManager(), node.Config.Params, node.Config.DataDirectory)
 		if err != nil {
 			glog.Fatal(err)
 		}
