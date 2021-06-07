@@ -164,19 +164,18 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
 		return amount
 	}
 
-	txindexTxn, txindexMeta := lib.DbGetTxindexFullTransactionByTxID(node.TXIndex.TXIndexChain.DB(),
-		node.Server.GetBlockchain().DB(), &input.TxID)
-	if txindexTxn == nil {
+	txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), &input.TxID)
+	if txnMeta == nil {
 		return amount
 	}
 
-	numOutputs := uint32(len(txindexTxn.TxOutputs))
+	numOutputs := uint32(len(txnMeta.TxnOutputs))
 	if input.Index > numOutputs {
 		return amount
 	}
 
 	if input.Index < numOutputs {
-		output := txindexTxn.TxOutputs[input.Index]
+		output := txnMeta.TxnOutputs[input.Index]
 		if output != nil {
 			amount.Value = strconv.FormatInt(int64(output.AmountNanos) * -1, 10)
 			amount.Currency = &Currency
@@ -184,20 +183,20 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
 	} else if input.Index == numOutputs {
 		// In this case, we are dealing with an "implicit" output.
 		// Only a few transaction types can generate these.
-		if txindexTxn.TxnMeta.GetTxnType() != lib.TxnTypeBitcoinExchange &&
-			txindexTxn.TxnMeta.GetTxnType() != lib.TxnTypeCreatorCoin {
+		if txnMeta.TxnType != lib.TxnTypeBitcoinExchange.String() &&
+			txnMeta.TxnType != lib.TxnTypeCreatorCoin.String() {
 			return amount
 		}
 
 		// Sum up all the outputs in the txn.
 		explicitTxnOutput := uint64(0)
-		for _, explicitOut := range txindexTxn.TxOutputs {
+		for _, explicitOut := range txnMeta.TxnOutputs {
 			explicitTxnOutput += explicitOut.AmountNanos
 		}
 
 		// The remainder after subtracting out the fee and the actual output
 		// of the txn is what this implicit output gets.
-		amountNanos := txindexMeta.BasicTransferTxindexMetadata.TotalOutputNanos - explicitTxnOutput
+		amountNanos := txnMeta.BasicTransferTxindexMetadata.TotalOutputNanos - explicitTxnOutput
 		amount.Value = strconv.FormatInt(int64(amountNanos) * -1, 10)
 		amount.Currency = &Currency
 	}
