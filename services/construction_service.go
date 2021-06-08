@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	averageSendTxnKB = 180.0 / 1000.0
+	averageSendTxnKB = 300.0 / 1000.0
 )
 
 type ConstructionAPIService struct {
