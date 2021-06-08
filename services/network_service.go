@@ -46,7 +46,18 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	targetIndex := int64(blockchain.HeaderTip().Height)
 	currentIndex := int64(blockchain.BlockTip().Height)
 	stage := blockchain.ChainState().String()
-	synced := blockchain.ChainState() == lib.SyncStateFullyCurrent
+
+	// Synced means we are fully synced OR we are only three blocks behind
+	synced := blockchain.ChainState() == lib.SyncStateFullyCurrent || (targetIndex - currentIndex) <= 3
+
+	// If TXIndex is enabled we wait for it to process blocks before increasing the CurrentIndex
+	if s.node.TXIndex != nil {
+		txIndex := int64(s.node.TXIndex.TXIndexChain.BlockTip().Height)
+		if txIndex < currentIndex {
+			currentIndex = txIndex
+		}
+	}
+
 	syncStatus := &types.SyncStatus{
 		CurrentIndex: &currentIndex,
 		TargetIndex:  &targetIndex,
