@@ -29,8 +29,6 @@ func (s *NetworkAPIService) NetworkList(ctx context.Context, request *types.Meta
 }
 
 func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.NetworkRequest) (*types.NetworkStatusResponse, *types.Error) {
-	genesisBlock := s.node.GetBlockAtHeight(0)
-
 	peers := []*types.Peer{}
 	for _, peer := range s.node.GetConnectionManager().GetAllPeers() {
 		peers = append(peers, &types.Peer{
@@ -57,13 +55,15 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 		}
 	}
 
-	currentBlock := s.node.GetBlockAtHeight(currentIndex)
 	syncStatus := &types.SyncStatus{
 		CurrentIndex: &currentIndex,
 		TargetIndex:  &targetIndex,
 		Stage:        &stage,
 		Synced:       &synced,
 	}
+
+	genesisBlock := s.node.GetBlockAtHeight(0)
+	currentBlock := s.node.GetBlockAtHeight(currentIndex)
 
 	return &types.NetworkStatusResponse{
 		CurrentBlockIdentifier: currentBlock.BlockIdentifier,
