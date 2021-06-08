@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	averageSendTxnKB = 300.0 / 1000.0
+	BytesPerKb = 1000
+	MaxDERSigLen = 74
 )
 
 type ConstructionAPIService struct {
@@ -41,7 +42,28 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 }
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
-	return &types.ConstructionPreprocessResponse{}, nil
+	bitcloutTxn, _, txnErr := constructTransaction(request.Operations)
+	if txnErr != nil {
+		return nil, txnErr
+	}
+
+	bitcloutTxnBytes, err := bitcloutTxn.ToBytes(true)
+	if err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
+	txnSize := uint64(len(bitcloutTxnBytes) + MaxDERSigLen)
+
+	options, err := types.MarshalMap(&preprocessOptions{
+		MaxTransactionSize: txnSize,
+	})
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+
+	return &types.ConstructionPreprocessResponse{
+		Options: options,
+	}, nil
 }
 
 func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, request *types.ConstructionMetadataRequest) (*types.ConstructionMetadataResponse, *types.Error) {
@@ -65,8 +87,12 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	// A reasonable default for send transaction size
-	suggestedFee := uint64(float64(feePerKB) * averageSendTxnKB)
+	var options preprocessOptions
+	if err := types.UnmarshalMap(request.Options, &options); err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+
+	suggestedFee := feePerKB * options.MaxTransactionSize / BytesPerKb
 
 	return &types.ConstructionMetadataResponse{
 		Metadata: metadata,
@@ -79,20 +105,19 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}, nil
 }
 
-func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
+func constructTransaction(operations []*types.Operation) (*lib.MsgBitCloutTxn, *types.AccountIdentifier, *types.Error) {
 	bitcloutTxn := &lib.MsgBitCloutTxn{
 		TxInputs:  []*lib.BitCloutInput{},
 		TxOutputs: []*lib.BitCloutOutput{},
 		TxnMeta:   &lib.BasicTransferMetadata{},
 	}
 	var signingAccount *types.AccountIdentifier
-	var inputAmounts []string
 
-	for _, operation := range request.Operations {
+	for _, operation := range operations {
 		if operation.Type == bitclout.InputOpType {
 			txId, txIndex, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
 			if err != nil {
-				return nil, wrapErr(ErrInvalidCoin, err)
+				return nil, nil, wrapErr(ErrInvalidCoin, err)
 			}
 
 			if signingAccount == nil {
@@ -100,7 +125,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 
 				publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
 				if err != nil {
-					return nil, wrapErr(ErrInvalidPublicKey, err)
+					return nil, nil, wrapErr(ErrInvalidPublicKey, err)
 				}
 
 				bitcloutTxn.PublicKey = publicKeyBytes
@@ -108,24 +133,22 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 
 			// Can only have one signing account per transaction
 			if signingAccount.Address != operation.Account.Address {
-				return nil, ErrMultipleSigners
+				return nil, nil, ErrMultipleSigners
 			}
 
 			bitcloutTxn.TxInputs = append(bitcloutTxn.TxInputs, &lib.BitCloutInput{
 				TxID: *txId,
 				Index: txIndex,
 			})
-
-			inputAmounts = append(inputAmounts, operation.Amount.Value)
 		} else if operation.Type == bitclout.OutputOpType {
 			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)
 			if err != nil {
-				return nil, wrapErr(ErrInvalidPublicKey, err)
+				return nil, nil, wrapErr(ErrInvalidPublicKey, err)
 			}
 
 			amount, err := types.AmountValue(operation.Amount)
 			if err != nil {
-				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+				return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
 
 			bitcloutTxn.TxOutputs = append(bitcloutTxn.TxOutputs, &lib.BitCloutOutput{
@@ -133,6 +156,23 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 				AmountNanos: amount.Uint64(),
 			})
 		}
+	}
+
+	return bitcloutTxn, signingAccount, nil
+}
+
+
+func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
+	var inputAmounts []string
+	for _, operation := range request.Operations {
+		if operation.Type == bitclout.InputOpType {
+			inputAmounts = append(inputAmounts, operation.Amount.Value)
+		}
+	}
+
+	bitcloutTxn, signingAccount, txnErr := constructTransaction(request.Operations)
+	if txnErr != nil {
+		return nil, txnErr
 	}
 
 	bitcloutTxnBytes, err := bitcloutTxn.ToBytes(true)
