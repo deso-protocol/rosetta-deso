@@ -39,31 +39,33 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 		})
 	}
 
-	blockchain := s.node.GetBlockchain()
-	targetIndex := int64(blockchain.HeaderTip().Height)
-	currentIndex := int64(blockchain.BlockTip().Height)
-	stage := blockchain.ChainState().String()
+	syncStatus := &types.SyncStatus{
+		CurrentIndex: new(int64),
+		TargetIndex: new(int64),
+		Stage: new(string),
+		Synced: new(bool),
+	}
+
+	// If TXIndex is enabled we wait for it to process blocks
+	if s.node.TXIndex != nil {
+		blockchain := s.node.TXIndex.TXIndexChain
+		*syncStatus.CurrentIndex = int64(blockchain.BlockTip().Height)
+		*syncStatus.TargetIndex = int64(blockchain.HeaderTip().Height)
+		*syncStatus.Stage = blockchain.ChainState().String()
+	} else {
+		blockchain := s.node.GetBlockchain()
+		*syncStatus.CurrentIndex = int64(blockchain.BlockTip().Height)
+		*syncStatus.TargetIndex = int64(blockchain.HeaderTip().Height)
+		*syncStatus.Stage = blockchain.ChainState().String()
+	}
 
 	// Synced means we are fully synced OR we are only three blocks behind
-	synced := blockchain.ChainState() == lib.SyncStateFullyCurrent || (targetIndex - currentIndex) <= 3
-
-	// If TXIndex is enabled we wait for it to process blocks before increasing the CurrentIndex
-	if s.node.TXIndex != nil {
-		txIndex := int64(s.node.TXIndex.TXIndexChain.BlockTip().Height)
-		if txIndex < currentIndex {
-			currentIndex = txIndex
-		}
-	}
-
-	syncStatus := &types.SyncStatus{
-		CurrentIndex: &currentIndex,
-		TargetIndex:  &targetIndex,
-		Stage:        &stage,
-		Synced:       &synced,
-	}
+	*syncStatus.Synced = *syncStatus.Stage == lib.SyncStateFullyCurrent.String() ||
+		(*syncStatus.Stage == lib.SyncStateSyncingBlocks.String() &&
+			(*syncStatus.TargetIndex - *syncStatus.CurrentIndex) <= 3)
 
 	genesisBlock := s.node.GetBlockAtHeight(0)
-	currentBlock := s.node.GetBlockAtHeight(currentIndex)
+	currentBlock := s.node.GetBlockAtHeight(*syncStatus.CurrentIndex)
 
 	return &types.NetworkStatusResponse{
 		CurrentBlockIdentifier: currentBlock.BlockIdentifier,
