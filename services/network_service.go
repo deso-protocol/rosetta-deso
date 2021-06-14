@@ -60,9 +60,9 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	}
 
 	// Synced means we are fully synced OR we are only three blocks behind
+	isSyncing := *syncStatus.Stage == lib.SyncStateSyncingBlocks.String() || *syncStatus.Stage == lib.SyncStateNeedBlocksss.String()
 	*syncStatus.Synced = *syncStatus.Stage == lib.SyncStateFullyCurrent.String() ||
-		(*syncStatus.Stage == lib.SyncStateSyncingBlocks.String() &&
-			(*syncStatus.TargetIndex - *syncStatus.CurrentIndex) <= 3)
+		(isSyncing && (*syncStatus.TargetIndex - *syncStatus.CurrentIndex) <= 3)
 
 	genesisBlock := s.node.GetBlockAtHeight(0)
 	currentBlock := s.node.GetBlockAtHeight(*syncStatus.CurrentIndex)
