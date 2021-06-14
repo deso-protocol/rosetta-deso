@@ -164,6 +164,16 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
 		return amount
 	}
 
+	// Temporary fix for returning input amounts for genesis block transactions
+	// This will be removed once most node operators have regenerated their txindex
+	zeroBlockHash := lib.BlockHash{}
+	if input.TxID == zeroBlockHash {
+		output := node.Params.GenesisBlock.Txns[0].TxOutputs[input.Index]
+		amount.Value = strconv.FormatInt(int64(output.AmountNanos) * -1, 10)
+		amount.Currency = &Currency
+		return amount
+	}
+
 	txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), &input.TxID)
 	if txnMeta == nil {
 		return amount
