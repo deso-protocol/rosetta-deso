@@ -164,7 +164,8 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
 		return amount
 	}
 
-	txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), &input.TxID)
+	txnMeta := lib.DbGetTxindexTransactionRefByTxID(
+		node.TXIndex.TXIndexChain.DB(), &input.TxID, node.Params)
 	if txnMeta == nil {
 		return amount
 	}
