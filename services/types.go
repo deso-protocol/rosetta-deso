@@ -13,3 +13,7 @@ type transactionMetadata struct {
 	Transaction    string                  `json:"transaction"`
 	InputAmounts   []string                `json:"input_amounts"`
 }
+
+type amountMetadata struct {
+	Confirmations uint64 `json:"confirmations"`
+}

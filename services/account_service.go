@@ -108,9 +108,16 @@ func (s *AccountAPIService) AccountCoins(
 	coins := []*types.Coin{}
 
 	for _, utxoEntry := range utxoEntries {
-		confirmations := int64(currentBlock.Height) - int64(utxoEntry.BlockHeight) + 1
+		confirmations := uint64(currentBlock.Height) - uint64(utxoEntry.BlockHeight) + 1
 
 		if confirmations > 0 {
+			metadata, err := types.MarshalMap(&amountMetadata{
+				Confirmations: confirmations,
+			})
+			if err != nil {
+				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			}
+
 			coins = append(coins, &types.Coin{
 				CoinIdentifier: &types.CoinIdentifier{
 					Identifier: fmt.Sprintf("%v:%d", utxoEntry.UtxoKey.TxID.String(), utxoEntry.UtxoKey.Index),
@@ -118,6 +125,7 @@ func (s *AccountAPIService) AccountCoins(
 				Amount: &types.Amount{
 					Value:    strconv.FormatUint(utxoEntry.AmountNanos, 10),
 					Currency: s.config.Currency,
+					Metadata: metadata,
 				},
 			})
 		}
