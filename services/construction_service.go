@@ -71,7 +71,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, ErrUnavailableOffline
 	}
 
-	utxoView, err := s.node.GetMempool().GetAugmentedUniversalView()
+	utxoView, err := lib.NewUtxoView(s.node.GetBlockchain().DB(), s.node.Params, s.node.GetBitcoinManager())
 	if err != nil {
 		return nil, wrapErr(ErrBitclout, err)
 	}
