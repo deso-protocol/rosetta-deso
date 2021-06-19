@@ -31,14 +31,15 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, ErrUnavailableOffline
 	}
 
+	blockchain := s.node.GetBlockchain()
+	currentBlock := blockchain.BlockTip()
+
 	publicKeyBytes, _, err := lib.Base58CheckDecode(request.AccountIdentifier.Address)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	mempool := s.node.GetMempool()
-
-	utxoView, err := mempool.GetAugmentedUtxoViewForPublicKey(publicKeyBytes, nil)
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, s.node.GetBitcoinManager())
 	if err != nil {
 		return nil, wrapErr(ErrBitclout, err)
 	}
@@ -48,17 +49,9 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, wrapErr(ErrBitclout, err)
 	}
 
-	blockchain := s.node.GetBlockchain()
-	currentBlock := blockchain.BlockTip()
-
 	var balance int64
-
 	for _, utxoEntry := range utxoEntries {
-		confirmations := int64(currentBlock.Height) - int64(utxoEntry.BlockHeight) + 1
-
-		if confirmations > 0 {
-			balance += int64(utxoEntry.AmountNanos)
-		}
+		balance += int64(utxoEntry.AmountNanos)
 	}
 
 	block := &types.BlockIdentifier{
@@ -69,7 +62,7 @@ func (s *AccountAPIService) AccountBalance(
 	return &types.AccountBalanceResponse{
 		BlockIdentifier: block,
 		Balances: []*types.Amount{
-			&types.Amount{
+			{
 				Value:    strconv.FormatInt(balance, 10),
 				Currency: s.config.Currency,
 			},
@@ -85,14 +78,15 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, ErrUnavailableOffline
 	}
 
+	blockchain := s.node.GetBlockchain()
+	currentBlock := blockchain.BlockTip()
+
 	publicKeyBytes, _, err := lib.Base58CheckDecode(request.AccountIdentifier.Address)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	mempool := s.node.GetMempool()
-
-	utxoView, err := mempool.GetAugmentedUtxoViewForPublicKey(publicKeyBytes, nil)
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, s.node.GetBitcoinManager())
 	if err != nil {
 		return nil, wrapErr(ErrBitclout, err)
 	}
@@ -102,33 +96,28 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, wrapErr(ErrBitclout, err)
 	}
 
-	blockchain := s.node.GetBlockchain()
-	currentBlock := blockchain.BlockTip()
-
 	coins := []*types.Coin{}
 
 	for _, utxoEntry := range utxoEntries {
 		confirmations := uint64(currentBlock.Height) - uint64(utxoEntry.BlockHeight) + 1
 
-		if confirmations > 0 {
-			metadata, err := types.MarshalMap(&amountMetadata{
-				Confirmations: confirmations,
-			})
-			if err != nil {
-				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-			}
-
-			coins = append(coins, &types.Coin{
-				CoinIdentifier: &types.CoinIdentifier{
-					Identifier: fmt.Sprintf("%v:%d", utxoEntry.UtxoKey.TxID.String(), utxoEntry.UtxoKey.Index),
-				},
-				Amount: &types.Amount{
-					Value:    strconv.FormatUint(utxoEntry.AmountNanos, 10),
-					Currency: s.config.Currency,
-					Metadata: metadata,
-				},
-			})
+		metadata, err := types.MarshalMap(&amountMetadata{
+			Confirmations: confirmations,
+		})
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 		}
+
+		coins = append(coins, &types.Coin{
+			CoinIdentifier: &types.CoinIdentifier{
+				Identifier: fmt.Sprintf("%v:%d", utxoEntry.UtxoKey.TxID.String(), utxoEntry.UtxoKey.Index),
+			},
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(utxoEntry.AmountNanos, 10),
+				Currency: s.config.Currency,
+				Metadata: metadata,
+			},
+		})
 	}
 
 	block := &types.BlockIdentifier{
