@@ -19,6 +19,11 @@ import (
 const (
 	BytesPerKb = 1000
 	MaxDERSigLen = 74
+
+	// FeeByteBuffer adds a byte buffer to the length of the transaction when calculating the suggested fee.
+	// We need this buffer because the size of the transaction can increase by a few bytes after
+	// the preprocess step and before the combine step
+	FeeByteBuffer = 10
 )
 
 type ConstructionAPIService struct {
@@ -52,10 +57,10 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	txnSize := uint64(len(bitcloutTxnBytes) + MaxDERSigLen)
+	txnSize := uint64(len(bitcloutTxnBytes) + MaxDERSigLen + FeeByteBuffer)
 
 	options, err := types.MarshalMap(&preprocessOptions{
-		MaxTransactionSize: txnSize,
+		TransactionSizeEstimate: txnSize,
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -92,7 +97,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	suggestedFee := feePerKB * options.MaxTransactionSize / BytesPerKb
+	suggestedFee := feePerKB * options.TransactionSizeEstimate / BytesPerKb
 
 	return &types.ConstructionMetadataResponse{
 		Metadata: metadata,

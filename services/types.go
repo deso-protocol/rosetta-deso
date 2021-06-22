@@ -1,8 +1,9 @@
 package services
 
 type preprocessOptions struct {
-	// Maximum number of bytes the transaction can be with a signature. Used for fee calculation
-	MaxTransactionSize uint64       `json:"max_transaction_size"`
+	// Estimated number of bytes the transaction can be with a signature and change address.
+	// Used to provide a suggested fee to clients
+	TransactionSizeEstimate uint64       `json:"transaction_size_estimate"`
 }
 
 type constructionMetadata struct {
