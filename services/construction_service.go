@@ -17,13 +17,13 @@ import (
 )
 
 const (
-	BytesPerKb = 1000
+	BytesPerKb   = 1000
 	MaxDERSigLen = 74
 
 	// FeeByteBuffer adds a byte buffer to the length of the transaction when calculating the suggested fee.
 	// We need this buffer because the size of the transaction can increase by a few bytes after
 	// the preprocess step and before the combine step
-	FeeByteBuffer = 10
+	FeeByteBuffer = 2
 )
 
 type ConstructionAPIService struct {
@@ -103,7 +103,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		Metadata: metadata,
 		SuggestedFee: []*types.Amount{
 			{
-				Value: strconv.FormatUint(suggestedFee, 10),
+				Value:    strconv.FormatUint(suggestedFee, 10),
 				Currency: &bitclout.Currency,
 			},
 		},
@@ -142,7 +142,7 @@ func constructTransaction(operations []*types.Operation) (*lib.MsgBitCloutTxn, *
 			}
 
 			bitcloutTxn.TxInputs = append(bitcloutTxn.TxInputs, &lib.BitCloutInput{
-				TxID: *txId,
+				TxID:  *txId,
 				Index: txIndex,
 			})
 		} else if operation.Type == bitclout.OutputOpType {
@@ -157,7 +157,7 @@ func constructTransaction(operations []*types.Operation) (*lib.MsgBitCloutTxn, *
 			}
 
 			bitcloutTxn.TxOutputs = append(bitcloutTxn.TxOutputs, &lib.BitCloutOutput{
-				PublicKey: publicKeyBytes,
+				PublicKey:   publicKeyBytes,
 				AmountNanos: amount.Uint64(),
 			})
 		}
@@ -165,7 +165,6 @@ func constructTransaction(operations []*types.Operation) (*lib.MsgBitCloutTxn, *
 
 	return bitcloutTxn, signingAccount, nil
 }
-
 
 func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
 	var inputAmounts []string
@@ -186,19 +185,19 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 	}
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:    hex.EncodeToString(bitcloutTxnBytes),
-		InputAmounts:   inputAmounts,
+		Transaction:  hex.EncodeToString(bitcloutTxnBytes),
+		InputAmounts: inputAmounts,
 	})
 
 	unsignedBytes := merkletree.Sha256DoubleHash(bitcloutTxnBytes)
 
 	return &types.ConstructionPayloadsResponse{
 		UnsignedTransaction: hex.EncodeToString(unsignedTxn),
-		Payloads:            []*types.SigningPayload{
+		Payloads: []*types.SigningPayload{
 			{
 				AccountIdentifier: signingAccount,
-				Bytes: unsignedBytes,
-				SignatureType: types.Ecdsa,
+				Bytes:             unsignedBytes,
+				SignatureType:     types.Ecdsa,
 			},
 		},
 	}, nil
@@ -305,7 +304,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 			},
 
 			Amount: &types.Amount{
-				Value: txn.InputAmounts[input.Index],
+				Value:    txn.InputAmounts[input.Index],
 				Currency: s.config.Currency,
 			},
 
