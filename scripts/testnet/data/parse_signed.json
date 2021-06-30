@@ -1,0 +1,8 @@
+{
+  "network_identifier": {
+    "blockchain": "Bitclout",
+    "network": "TESTNET"
+  },
+  "transaction": "REPLACE ME",
+  "signed": true
+}

@@ -1,0 +1,15 @@
+{
+	"network_identifier": {
+		"blockchain": "Bitclout",
+		"network": "TESTNET"
+	},
+	"options": {
+		"transaction_size_estimate": 224
+	},
+	"public_keys": [
+		{
+			"hex_bytes": "02b872c1b6acd3be581a27e53a15a2c9d095d3204dad3c2d7fe9a31f8c077126fe",
+			"curve_type": "secp256k1"
+		}
+	]
+}
