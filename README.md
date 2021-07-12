@@ -37,3 +37,12 @@ docker run -it rosetta-bitclout /bitclout/bin/rosetta-bitclout run
 Specify `--network=TESTNET --miner-public-keys=publickey` to get free testnet money. You
 can easily generate a key on bitclout.com and copy it from your wallet page (starts with
 BC).
+
+### Testnet Example
+
+Scripts in the `scripts/testnet` folder demonstrate how to run an online node, offline node, and construct transactions.
+
+1. `cd scripts/testnet`
+1. Start an online node using `./online.sh`
+1. Start an online node using `./offline.sh`
+2. Construct and submit transactions using `./send.sh`

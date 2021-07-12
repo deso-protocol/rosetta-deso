@@ -1,0 +1,71 @@
+{
+	"network_identifier": {
+		"blockchain": "Bitclout",
+		"network": "TESTNET"
+	},
+	"operations": [
+		{
+			"operation_identifier": {
+				"index": 0
+			},
+			"type": "INPUT",
+			"status": "",
+			"account": {
+				"address": "tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF"
+			},
+			"amount": {
+				"value": "-799960000",
+				"currency": {
+					"symbol": "tCLOUT",
+					"decimals": 9
+				}
+			},
+			"coin_change": {
+				"coin_identifier": {
+					"identifier": "REPLACE ME"
+				},
+				"coin_action": "coin_spent"
+			}
+		},
+		{
+			"operation_identifier": {
+				"index": 1
+			},
+			"type": "OUTPUT",
+			"status": "",
+			"account": {
+				"address": "tBCKUqfX4nDZEcktiCqgygd6MWR69aL61xVwgYb4yjxRn2SrLJxT3x"
+			},
+			"amount": {
+				"value": "150977271",
+				"currency": {
+					"symbol": "tCLOUT",
+					"decimals": 9
+				}
+			}
+		},
+		{
+			"operation_identifier": {
+				"index": 2
+			},
+			"type": "OUTPUT",
+			"status": "",
+			"account": {
+				"address": "tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF"
+			},
+			"amount": {
+				"value": "648962729",
+				"currency": {
+					"symbol": "tCLOUT",
+					"decimals": 9
+				}
+			}
+		}
+	],
+	"public_keys": [
+		{
+			"hex_bytes": "02b872c1b6acd3be581a27e53a15a2c9d095d3204dad3c2d7fe9a31f8c077126fe",
+			"curve_type": "secp256k1"
+		}
+	]
+}

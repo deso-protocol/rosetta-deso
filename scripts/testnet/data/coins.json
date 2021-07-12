@@ -1,0 +1,10 @@
+{
+	"network_identifier":{
+		"blockchain":"Bitclout",
+		"network":"TESTNET"
+	},
+	"account_identifier":{
+		"address":"tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF"
+	},
+	"include_mempool":false
+}
