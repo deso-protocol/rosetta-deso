@@ -46,3 +46,21 @@ Scripts in the `scripts/testnet` folder demonstrate how to run an online node, o
 1. Start an online node using `./online.sh`
 1. Start an online node using `./offline.sh`
 2. Construct and submit transactions using `./send.sh`
+
+### Rosetta-cli checks
+
+To run checks with [`rosetta-cli`](https://github.com/coinbase/rosetta-cli), first install the rosetta-cli:
+
+```
+curl -sSfL https://raw.githubusercontent.com/coinbase/rosetta-cli/master/scripts/install.sh | sh -s
+```
+To run the data checks, execute:
+```
+bin/rosetta-cli check:data --configuration-file rosetta-cli-conf/testnet/bitclout.conf
+```
+
+To run the construction checks, execute:
+
+```
+bin/rosetta-cli check:construction --configuration-file rosetta-cli-conf/testnet/bitclout.conf
+```
