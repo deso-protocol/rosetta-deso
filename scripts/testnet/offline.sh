@@ -6,4 +6,5 @@ set -v
   --port 17006 \
   --data-directory /tmp/rosetta-offline \
   --network TESTNET \
+  --regtest \
 )

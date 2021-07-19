@@ -140,8 +140,8 @@ type Node struct {
 	*lib.Server
 	Params  *lib.BitCloutParams
 	TXIndex *lib.TXIndex
-	Online   bool
-	Config   *Config
+	Online  bool
+	Config  *Config
 }
 
 func NewNode(config *Config) *Node {
@@ -154,6 +154,10 @@ func NewNode(config *Config) *Node {
 }
 
 func (node *Node) Start() {
+	if node.Config.Regtest {
+		node.Params.EnableRegtest()
+	}
+
 	bitcloutAddrMgr := addrmgr.New(node.Config.DataDirectory, net.LookupIP)
 	bitcloutAddrMgr.Start()
 

@@ -20,6 +20,7 @@ type Config struct {
 	DataDirectory          string
 	MinerPublicKeys        []string
 	TXIndex                bool
+	Regtest                bool
 }
 
 func LoadConfig() (*Config, error) {
@@ -57,6 +58,7 @@ func LoadConfig() (*Config, error) {
 	result.NodePort = viper.GetInt("node-port")
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
 	result.TXIndex = viper.GetBool("txindex")
+	result.Regtest = viper.GetBool("regtest")
 
 	return &result, nil
 }
