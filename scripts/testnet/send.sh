@@ -46,6 +46,5 @@ echo -e "Combine result:\n$COMBINE\n"
 HASH=$(jq ".signed_transaction = $COMBINE" data/submit.json | curl -s -X POST --data-binary @- $OFFLINE/construction/hash | jq)
 echo -e "Hash result:\n$HASH\n"
 
-# FIXME: For some reason I'm getting an invalid signature when I shouldn't be
 SUBMIT=$(jq ".signed_transaction = $COMBINE" data/submit.json | curl -s -X POST --data-binary @- $ONLINE/construction/submit | jq)
 echo -e "Submit result:\n$SUBMIT\n"

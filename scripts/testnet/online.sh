@@ -7,4 +7,5 @@ set -v
   --data-directory /tmp/rosetta-online \
   --network TESTNET \
   --miner-public-keys tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF \
+  --regtest \
 )
