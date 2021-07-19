@@ -29,7 +29,7 @@ echo -e "Metadata result:\n$METADATA\n"
 # TODO: Use the suggested_fee from METADATA to adjust the inputs accordingly
 PAYLOADS=$(echo $TXN | curl -s -X POST --data-binary @- $OFFLINE/construction/payloads | jq)
 UNSIGNED_TXN=$(echo $PAYLOADS | jq '.unsigned_transaction')
-UNSIGNED_BYTES=$(echo $PAYLOADS | jq '.payloads[0].hex_bytes')
+UNSIGNED_BYTES=$(echo $PAYLOADS | jq -r '.payloads[0].hex_bytes')
 echo -e "Payloads unsigned bytes:\n$UNSIGNED_BYTES\n"
 
 # TODO: Verify $TXN matches $PARSE_UNSIGNED
