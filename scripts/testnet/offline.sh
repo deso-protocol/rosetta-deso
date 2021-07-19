@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -v
 
 (cd ../../ && go build -o rosetta-bitclout -gcflags="all=-N -l" main.go && ./rosetta-bitclout run \
   --mode OFFLINE \

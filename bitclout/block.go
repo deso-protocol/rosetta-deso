@@ -98,7 +98,7 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 					Address: lib.Base58CheckEncode(txn.PublicKey, false, node.Params),
 				},
 
-				Amount: &amount,
+				Amount: amount,
 
 				CoinChange: &types.CoinChange{
 					CoinIdentifier: &types.CoinIdentifier{
@@ -157,11 +157,11 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 	}
 }
 
-func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
+func (node *Node) getInputAmount(input *lib.BitCloutInput) *types.Amount {
 	amount := types.Amount{}
 
 	if node.TXIndex == nil {
-		return amount
+		return nil
 	}
 
 	// Temporary fix for returning input amounts for genesis block transactions
@@ -169,25 +169,25 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
 	zeroBlockHash := lib.BlockHash{}
 	if input.TxID == zeroBlockHash {
 		output := node.Params.GenesisBlock.Txns[0].TxOutputs[input.Index]
-		amount.Value = strconv.FormatInt(int64(output.AmountNanos) * -1, 10)
+		amount.Value = strconv.FormatInt(int64(output.AmountNanos)*-1, 10)
 		amount.Currency = &Currency
-		return amount
+		return &amount
 	}
 
 	txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), &input.TxID)
 	if txnMeta == nil {
-		return amount
+		return nil
 	}
 
 	numOutputs := uint32(len(txnMeta.TxnOutputs))
 	if input.Index > numOutputs {
-		return amount
+		return nil
 	}
 
 	if input.Index < numOutputs {
 		output := txnMeta.TxnOutputs[input.Index]
 		if output != nil {
-			amount.Value = strconv.FormatInt(int64(output.AmountNanos) * -1, 10)
+			amount.Value = strconv.FormatInt(int64(output.AmountNanos)*-1, 10)
 			amount.Currency = &Currency
 		}
 	} else if input.Index == numOutputs {
@@ -195,7 +195,7 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
 		// Only a few transaction types can generate these.
 		if txnMeta.TxnType != lib.TxnTypeBitcoinExchange.String() &&
 			txnMeta.TxnType != lib.TxnTypeCreatorCoin.String() {
-			return amount
+			return nil
 		}
 
 		// Sum up all the outputs in the txn.
@@ -207,9 +207,9 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) types.Amount {
 		// The remainder after subtracting out the fee and the actual output
 		// of the txn is what this implicit output gets.
 		amountNanos := txnMeta.BasicTransferTxindexMetadata.TotalOutputNanos - explicitTxnOutput
-		amount.Value = strconv.FormatInt(int64(amountNanos) * -1, 10)
+		amount.Value = strconv.FormatInt(int64(amountNanos)*-1, 10)
 		amount.Currency = &Currency
 	}
 
-	return amount
+	return &amount
 }
