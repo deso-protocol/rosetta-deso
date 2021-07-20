@@ -194,7 +194,11 @@ func (node *Node) Start() {
 
 	// Note: This is one of many seeds. We specify it explicitly for convenience,
 	// but not specifying it would make the code run just the same.
-	connectIPAddrs := []string{"bitclout-seed-4.io"}
+	connectIPAddrs := []string{}
+	if node.Params.NetworkType == lib.NetworkType_MAINNET {
+		connectIPAddrs = append(connectIPAddrs, "bitclout-seed-4.io")
+	}
+
 	minerCount := uint64(1)
 	maxBlockTemplatesToCache := uint64(100)
 	minBlockUpdateInterval := uint64(10)
