@@ -319,7 +319,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 			},
 
 			Amount: &types.Amount{
-				Value:    txn.InputAmounts[input.Index],
+				Value:    txn.InputAmounts[i],
 				Currency: s.config.Currency,
 			},
 

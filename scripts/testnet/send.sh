@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# set -o xtrace
 
 # NOTE: This script serves as a proof-of-concept of how all the online and offline endpoints work.
 # For now, it uses a single, hardcoded public key to mine and send money.

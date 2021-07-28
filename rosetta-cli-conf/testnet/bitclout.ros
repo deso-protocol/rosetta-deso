@@ -173,9 +173,7 @@ return_funds(10){
       "recipient_amount":{{recipient_amount}}
     });
 
-    // We load the recipient address from an ENV.
-    recipient_address = load_env("RECIPIENT");
-    recipient = {"address": {{recipient_address}}};
+    recipient = {"address": "tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF"};
 
     sender_amount = 0 - {{sender.balance.value}};
     transfer_dry_run.confirmation_depth = "1";
