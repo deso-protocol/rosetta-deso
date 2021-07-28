@@ -11,7 +11,7 @@ replace github.com/sasha-s/go-deadlock => ../core/third_party/github.com/sasha-s
 replace github.com/bitclout/core => ../core/
 
 require (
-	github.com/bitclout/core v1.0.7
+	github.com/bitclout/core v1.1.0
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/coinbase/rosetta-sdk-go v0.6.10
 	github.com/davecgh/go-spew v1.1.1
