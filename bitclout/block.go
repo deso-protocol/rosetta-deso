@@ -179,37 +179,21 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) *types.Amount {
 		return nil
 	}
 
-	numOutputs := uint32(len(txnMeta.TxnOutputs))
-	if input.Index > numOutputs {
-		return nil
-	}
+	// Iterate over the UtxoOperations created by the txn
+	// to find the one corresponding to the index specified.
+	for _, utxoOp := range txnMeta.BasicTransferTxindexMetadata.UtxoOps {
+		if utxoOp.Type == lib.OperationTypeAddUtxo &&
+			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
+			utxoOp.Entry.UtxoKey.Index == input.Index {
 
-	if input.Index < numOutputs {
-		output := txnMeta.TxnOutputs[input.Index]
-		if output != nil {
-			amount.Value = strconv.FormatInt(int64(output.AmountNanos)*-1, 10)
+			amount.Value = strconv.FormatInt(int64(utxoOp.Entry.AmountNanos), 10)
 			amount.Currency = &Currency
+			return &amount
 		}
-	} else if input.Index == numOutputs {
-		// In this case, we are dealing with an "implicit" output.
-		// Only a few transaction types can generate these.
-		if txnMeta.TxnType != lib.TxnTypeBitcoinExchange.String() &&
-			txnMeta.TxnType != lib.TxnTypeCreatorCoin.String() {
-			return nil
-		}
-
-		// Sum up all the outputs in the txn.
-		explicitTxnOutput := uint64(0)
-		for _, explicitOut := range txnMeta.TxnOutputs {
-			explicitTxnOutput += explicitOut.AmountNanos
-		}
-
-		// The remainder after subtracting out the fee and the actual output
-		// of the txn is what this implicit output gets.
-		amountNanos := txnMeta.BasicTransferTxindexMetadata.TotalOutputNanos - explicitTxnOutput
-		amount.Value = strconv.FormatInt(int64(amountNanos)*-1, 10)
-		amount.Currency = &Currency
 	}
 
-	return &amount
+	// If we get here then we failed to find the input we were looking for.
+	fmt.Println("Error: getInputAmount requested input that does not exist " +
+		"for txn %v index %v", lib.PkToStringBoth(input.TxID[:]), input.Index)
+	return nil
 }
