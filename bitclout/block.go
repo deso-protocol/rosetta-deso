@@ -186,14 +186,14 @@ func (node *Node) getInputAmount(input *lib.BitCloutInput) *types.Amount {
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
 			utxoOp.Entry.UtxoKey.Index == input.Index {
 
-			amount.Value = strconv.FormatInt(int64(utxoOp.Entry.AmountNanos), 10)
+			amount.Value = strconv.FormatInt(int64(utxoOp.Entry.AmountNanos)*-1, 10)
 			amount.Currency = &Currency
 			return &amount
 		}
 	}
 
 	// If we get here then we failed to find the input we were looking for.
-	fmt.Println("Error: getInputAmount requested input that does not exist " +
+	fmt.Println("Error: getInputAmount requested input that does not exist "+
 		"for txn %v index %v", lib.PkToStringBoth(input.TxID[:]), input.Index)
 	return nil
 }
