@@ -26,6 +26,7 @@ COPY rosetta-bitclout/main.go       .
 COPY core/clouthash ../core/clouthash
 COPY core/cmd       ../core/cmd
 COPY core/lib       ../core/lib
+COPY core/migrate   ../core/migrate
 
 # build rosetta-bitclout
 RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-bitclout main.go
