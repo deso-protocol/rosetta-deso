@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/bitclout/core/lib"
@@ -176,13 +174,6 @@ func (node *Node) Start() {
 		go addSeedAddrsFromPrefixes(bitcloutAddrMgr, node.Config.Params)
 	}
 
-	bitcoinDataDir := filepath.Join(node.Config.DataDirectory, "bitcoin_manager")
-	if err := os.MkdirAll(bitcoinDataDir, os.ModePerm); err != nil {
-		fmt.Errorf("Could not create Bitcoin datadir (%s): %v", node.Config.DataDirectory, err)
-
-		panic(err)
-	}
-
 	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
 	opts := badger.DefaultOptions(dbDir)
 	opts.ValueDir = dbDir
@@ -206,7 +197,6 @@ func (node *Node) Start() {
 	mempoolDumpDir := ""
 	disableNetworking := !node.Online
 	readOnly := !node.Online
-	bitcoinConnectPeer := ""
 	targetOutboundPeers := uint32(8)
 	maxInboundPeers := uint32(125)
 	rateLimitFeerateNanosPerKB := uint64(0)
@@ -218,6 +208,7 @@ func (node *Node) Start() {
 		bitcloutAddrMgr,
 		connectIPAddrs,
 		db,
+		nil,
 		targetOutboundPeers,
 		maxInboundPeers,
 		node.Config.MinerPublicKeys,
@@ -226,7 +217,6 @@ func (node *Node) Start() {
 		rateLimitFeerateNanosPerKB,
 		MinFeeRateNanosPerKB,
 		stallTimeoutSeconds,
-		bitcoinDataDir,
 		maxBlockTemplatesToCache,
 		minBlockUpdateInterval,
 		blockCypherAPIKey,
@@ -235,8 +225,6 @@ func (node *Node) Start() {
 		mempoolDumpDir,
 		disableNetworking,
 		readOnly,
-		false,
-		bitcoinConnectPeer,
 		false,
 		nil,
 		"",
@@ -250,7 +238,7 @@ func (node *Node) Start() {
 	node.Server.Start()
 
 	if node.Config.TXIndex {
-		node.TXIndex, err = lib.NewTXIndex(node.Server.GetBlockchain(), node.Server.GetBitcoinManager(), node.Config.Params, node.Config.DataDirectory)
+		node.TXIndex, err = lib.NewTXIndex(node.Server.GetBlockchain(), node.Config.Params, node.Config.DataDirectory)
 		if err != nil {
 			glog.Fatal(err)
 		}
