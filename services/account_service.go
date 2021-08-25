@@ -39,7 +39,7 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, s.node.GetBitcoinManager())
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
 	if err != nil {
 		return nil, wrapErr(ErrBitclout, err)
 	}
@@ -86,7 +86,7 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, s.node.GetBitcoinManager())
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
 	if err != nil {
 		return nil, wrapErr(ErrBitclout, err)
 	}

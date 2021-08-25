@@ -2,7 +2,7 @@ FROM alpine:edge AS rosetta
 
 RUN apk update
 RUN apk upgrade
-RUN apk add --update go=1.16.5-r0 gcc g++ vips-dev
+RUN apk add --update go=1.16.7-r0 gcc g++ vips-dev
 
 WORKDIR /bitclout/src
 
@@ -26,6 +26,7 @@ COPY rosetta-bitclout/main.go       .
 COPY core/clouthash ../core/clouthash
 COPY core/cmd       ../core/cmd
 COPY core/lib       ../core/lib
+COPY core/migrate   ../core/migrate
 
 # build rosetta-bitclout
 RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-bitclout main.go
