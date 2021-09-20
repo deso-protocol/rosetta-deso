@@ -1,4 +1,4 @@
-module github.com/bitclout/rosetta-bitclout
+module github.com/deso-protocol/deso-rosetta
 
 go 1.16
 
@@ -8,13 +8,13 @@ replace github.com/laser/go-merkle-tree => ../core/third_party/github.com/laser/
 
 replace github.com/sasha-s/go-deadlock => ../core/third_party/github.com/sasha-s/go-deadlock
 
-replace github.com/bitclout/core => ../core/
+replace github.com/deso-protocol/core => ../core/
 
 require (
-	github.com/bitclout/core v1.1.0
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/coinbase/rosetta-sdk-go v0.6.10
 	github.com/davecgh/go-spew v1.1.1
+	github.com/deso-protocol/core v1.1.0
 	github.com/dgraph-io/badger/v3 v3.2103.0
 	github.com/go-delve/delve v1.5.0 // indirect
 	github.com/golang/glog v0.0.0-20210429001901-424d2337a529

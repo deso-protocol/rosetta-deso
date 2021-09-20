@@ -2,18 +2,18 @@ package services
 
 import (
 	"context"
-	"github.com/bitclout/rosetta-bitclout/bitclout"
+	"github.com/deso-protocol/deso-rosetta/deso"
 
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 type MempoolAPIService struct {
-	config *bitclout.Config
-	node   *bitclout.Node
+	config *deso.Config
+	node   *deso.Node
 }
 
-func NewMempoolAPIService(config *bitclout.Config, node *bitclout.Node) server.MempoolAPIServicer {
+func NewMempoolAPIService(config *deso.Config, node *deso.Node) server.MempoolAPIServicer {
 	return &MempoolAPIService{
 		config: config,
 		node:   node,
@@ -21,7 +21,7 @@ func NewMempoolAPIService(config *bitclout.Config, node *bitclout.Node) server.M
 }
 
 func (s *MempoolAPIService) Mempool(ctx context.Context, request *types.NetworkRequest) (*types.MempoolResponse, *types.Error) {
-	if s.config.Mode != bitclout.Online {
+	if s.config.Mode != deso.Online {
 		// TODO: Implement/Abstract
 		return nil, ErrUnavailableOffline
 		//return nil, wrapErr(ErrUnavailableOffline, nil)
@@ -30,7 +30,7 @@ func (s *MempoolAPIService) Mempool(ctx context.Context, request *types.NetworkR
 	mempool := s.node.GetMempool()
 	transactions, _, err := mempool.GetTransactionsOrderedByTimeAdded()
 	if err != nil {
-		return nil, ErrBitclout
+		return nil, ErrDeSo
 	}
 
 	transactionIdentifiers := []*types.TransactionIdentifier{}
@@ -44,7 +44,7 @@ func (s *MempoolAPIService) Mempool(ctx context.Context, request *types.NetworkR
 }
 
 func (s *MempoolAPIService) MempoolTransaction(ctx context.Context, request *types.MempoolTransactionRequest) (*types.MempoolTransactionResponse, *types.Error) {
-	if s.config.Mode != bitclout.Online {
+	if s.config.Mode != deso.Online {
 		return nil, ErrUnavailableOffline
 	}
 

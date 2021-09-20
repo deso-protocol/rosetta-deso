@@ -9,7 +9,7 @@ var (
 		ErrUnimplemented,
 		ErrUnavailableOffline,
 		ErrNotReady,
-		ErrBitclout,
+		ErrDeSo,
 		ErrUnableToParseIntermediateResult,
 		ErrUnableToGetCoins,
 	}
@@ -26,13 +26,13 @@ var (
 
 	ErrNotReady = &types.Error{
 		Code:      2,
-		Message:   "Bitclout node is not ready",
+		Message:   "DeSo node is not ready",
 		Retriable: true,
 	}
 
-	ErrBitclout = &types.Error{
+	ErrDeSo = &types.Error{
 		Code:    3,
-		Message: "Bitclout node error",
+		Message: "DeSo node error",
 	}
 
 	ErrUnableToParseIntermediateResult = &types.Error{

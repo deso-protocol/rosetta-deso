@@ -2,20 +2,20 @@ package services
 
 import (
 	"context"
-	"github.com/bitclout/core/lib"
+	"github.com/deso-protocol/core/lib"
 	"strconv"
 
-	"github.com/bitclout/rosetta-bitclout/bitclout"
+	"github.com/deso-protocol/deso-rosetta/deso"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 type NetworkAPIService struct {
-	config *bitclout.Config
-	node   *bitclout.Node
+	config *deso.Config
+	node   *deso.Node
 }
 
-func NewNetworkAPIService(config *bitclout.Config, node *bitclout.Node) server.NetworkAPIServicer {
+func NewNetworkAPIService(config *deso.Config, node *deso.Node) server.NetworkAPIServicer {
 	return &NetworkAPIService{
 		config: config,
 		node:   node,
@@ -86,15 +86,15 @@ func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.N
 		Allow: &types.Allow{
 			OperationStatuses: []*types.OperationStatus{
 				{
-					Status:     bitclout.SuccessStatus,
+					Status:     deso.SuccessStatus,
 					Successful: true,
 				},
 				{
-					Status:     bitclout.RevertedStatus,
+					Status:     deso.RevertedStatus,
 					Successful: false,
 				},
 			},
-			OperationTypes: bitclout.OperationTypes,
+			OperationTypes: deso.OperationTypes,
 			Errors:         Errors,
 		},
 	}, nil

@@ -2,7 +2,7 @@ package services
 
 import (
 	"fmt"
-	"github.com/bitclout/core/lib"
+	"github.com/deso-protocol/core/lib"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"strconv"
 	"strings"

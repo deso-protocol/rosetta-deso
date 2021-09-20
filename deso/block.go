@@ -1,4 +1,4 @@
-package bitclout
+package deso
 
 import (
 	"encoding/hex"
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/bitclout/core/lib"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/deso-protocol/core/lib"
 )
 
 func (node *Node) GetBlock(hash string) *types.Block {
@@ -44,7 +44,7 @@ func (node *Node) CurrentBlock() *types.Block {
 	return node.GetBlockAtHeight(int64(blockchain.BlockTip().Height))
 }
 
-func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
+func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	blockchain := node.GetBlockchain()
 
 	blockHash, _ := block.Hash()
@@ -157,7 +157,7 @@ func (node *Node) convertBlock(block *lib.MsgBitCloutBlock) *types.Block {
 	}
 }
 
-func (node *Node) getInputAmount(input *lib.BitCloutInput) *types.Amount {
+func (node *Node) getInputAmount(input *lib.DeSoInput) *types.Amount {
 	amount := types.Amount{}
 
 	if node.TXIndex == nil {

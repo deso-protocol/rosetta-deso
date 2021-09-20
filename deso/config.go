@@ -1,10 +1,10 @@
-package bitclout
+package deso
 
 import (
 	"errors"
 	"strings"
 
-	"github.com/bitclout/core/lib"
+	"github.com/deso-protocol/core/lib"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/spf13/viper"
 )
@@ -12,7 +12,7 @@ import (
 type Config struct {
 	Mode                   Mode
 	Network                *types.NetworkIdentifier
-	Params                 *lib.BitCloutParams
+	Params                 *lib.DeSoParams
 	Currency               *types.Currency
 	GenesisBlockIdentifier *types.BlockIdentifier
 	Port                   int
@@ -36,16 +36,16 @@ func LoadConfig() (*Config, error) {
 
 	switch network := Network(strings.ToUpper(viper.GetString("network"))); network {
 	case Mainnet:
-		result.Params = &lib.BitCloutMainnetParams
+		result.Params = &lib.DeSoMainnetParams
 	case Testnet:
-		result.Params = &lib.BitCloutTestnetParams
+		result.Params = &lib.DeSoTestnetParams
 		result.Currency.Symbol = "t" + result.Currency.Symbol
 	default:
 		return nil, errors.New("unknown network")
 	}
 
 	result.Network = &types.NetworkIdentifier{
-		Blockchain: "Bitclout",
+		Blockchain: "DeSo",
 		Network:    result.Params.NetworkType.String(),
 	}
 

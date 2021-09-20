@@ -16,8 +16,8 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	"github.com/bitclout/rosetta-bitclout/bitclout"
-	"github.com/bitclout/rosetta-bitclout/services"
+	"github.com/deso-protocol/deso-rosetta/deso"
+	"github.com/deso-protocol/deso-rosetta/services"
 )
 
 // runCmd represents the run command
@@ -31,16 +31,16 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		config, err := bitclout.LoadConfig()
+		config, err := deso.LoadConfig()
 		if err != nil {
 			return err
 		}
 
-		node := bitclout.NewNode(config)
+		node := deso.NewNode(config)
 		go node.Start()
 
 		asserter, err := asserter.NewServer(
-			bitclout.OperationTypes,
+			deso.OperationTypes,
 			false,
 			[]*types.NetworkIdentifier{config.Network},
 			nil,
@@ -70,8 +70,8 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
-	runCmd.PersistentFlags().String("network", string(bitclout.Mainnet), "network to connect to")
-	runCmd.PersistentFlags().String("mode", string(bitclout.Online), "mode to start in")
+	runCmd.PersistentFlags().String("network", string(deso.Mainnet), "network to connect to")
+	runCmd.PersistentFlags().String("mode", string(deso.Online), "mode to start in")
 	runCmd.PersistentFlags().Int("port", 17005, "rosetta api listener port")
 	runCmd.PersistentFlags().Int("node-port", 17000, "node api listener port")
 	runCmd.PersistentFlags().String("data-directory", "/data", "location to store persistent data")

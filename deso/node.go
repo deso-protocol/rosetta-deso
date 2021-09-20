@@ -1,4 +1,4 @@
-package bitclout
+package deso
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/bitclout/core/lib"
+	"github.com/deso-protocol/core/lib"
 	"github.com/btcsuite/btcd/addrmgr"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/davecgh/go-spew/spew"
@@ -54,7 +54,7 @@ func getAddrsToListenOn(protocolPort int) ([]net.TCPAddr, []net.Listener) {
 	return listeningAddrs, listeners
 }
 
-func addIPsForHost(bitcloutAddrMgr *addrmgr.AddrManager, host string, params *lib.BitCloutParams) {
+func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.DeSoParams) {
 	ipAddrs, err := net.LookupIP(host)
 	if err != nil {
 		glog.Tracef("_addSeedAddrs: DNS discovery failed on seed host (continuing on): %s %v\n", host, err)
@@ -92,10 +92,10 @@ func addIPsForHost(bitcloutAddrMgr *addrmgr.AddrManager, host string, params *li
 	// Normally the second argument is the source who told us about the
 	// addresses we're adding. In this case since the source is a DNS seed
 	// just use the first address in the fetch as the source.
-	bitcloutAddrMgr.AddAddresses(netAddrs, netAddrs[0])
+	desoAddrMgr.AddAddresses(netAddrs, netAddrs[0])
 }
 
-func addSeedAddrsFromPrefixes(bitcloutAddrMgr *addrmgr.AddrManager, params *lib.BitCloutParams) {
+func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSoParams) {
 	MaxIterations := 99999
 
 	// This one iterates sequentially.
@@ -107,7 +107,7 @@ func addSeedAddrsFromPrefixes(bitcloutAddrMgr *addrmgr.AddrManager, params *lib.
 				go func(dnsGenerator []string) {
 					dnsString := fmt.Sprintf("%s%d%s", dnsGenerator[0], dnsNumber, dnsGenerator[1])
 					glog.Tracef("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
-					addIPsForHost(bitcloutAddrMgr, dnsString, params)
+					addIPsForHost(desoAddrMgr, dnsString, params)
 					wg.Done()
 				}(dnsGeneratorOuter)
 			}
@@ -125,7 +125,7 @@ func addSeedAddrsFromPrefixes(bitcloutAddrMgr *addrmgr.AddrManager, params *lib.
 				go func(dnsGenerator []string) {
 					dnsString := fmt.Sprintf("%s%d%s", dnsGenerator[0], dnsNumber, dnsGenerator[1])
 					glog.Tracef("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
-					addIPsForHost(bitcloutAddrMgr, dnsString, params)
+					addIPsForHost(desoAddrMgr, dnsString, params)
 					wg.Done()
 				}(dnsGeneratorOuter)
 			}
@@ -136,7 +136,7 @@ func addSeedAddrsFromPrefixes(bitcloutAddrMgr *addrmgr.AddrManager, params *lib.
 
 type Node struct {
 	*lib.Server
-	Params  *lib.BitCloutParams
+	Params  *lib.DeSoParams
 	TXIndex *lib.TXIndex
 	Online  bool
 	Config  *Config
@@ -156,22 +156,22 @@ func (node *Node) Start() {
 		node.Params.EnableRegtest()
 	}
 
-	bitcloutAddrMgr := addrmgr.New(node.Config.DataDirectory, net.LookupIP)
-	bitcloutAddrMgr.Start()
+	desoAddrMgr := addrmgr.New(node.Config.DataDirectory, net.LookupIP)
+	desoAddrMgr.Start()
 
 	listeningAddrs, listeners := getAddrsToListenOn(node.Config.NodePort)
 
 	if node.Online {
 		for _, addr := range listeningAddrs {
 			netAddr := wire.NewNetAddress(&addr, 0)
-			_ = bitcloutAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
+			_ = desoAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
 		}
 
 		for _, host := range node.Config.Params.DNSSeeds {
-			addIPsForHost(bitcloutAddrMgr, host, node.Config.Params)
+			addIPsForHost(desoAddrMgr, host, node.Config.Params)
 		}
 
-		go addSeedAddrsFromPrefixes(bitcloutAddrMgr, node.Config.Params)
+		go addSeedAddrsFromPrefixes(desoAddrMgr, node.Config.Params)
 	}
 
 	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
@@ -187,7 +187,7 @@ func (node *Node) Start() {
 	// but not specifying it would make the code run just the same.
 	connectIPAddrs := []string{}
 	if node.Params.NetworkType == lib.NetworkType_MAINNET {
-		connectIPAddrs = append(connectIPAddrs, "bitclout-seed-4.io")
+		connectIPAddrs = append(connectIPAddrs, "deso-seed-4.io")
 	}
 
 	minerCount := uint64(1)
@@ -205,7 +205,7 @@ func (node *Node) Start() {
 	node.Server, err = lib.NewServer(
 		node.Config.Params,
 		listeners,
-		bitcloutAddrMgr,
+		desoAddrMgr,
 		connectIPAddrs,
 		db,
 		nil,

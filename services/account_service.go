@@ -3,20 +3,20 @@ package services
 import (
 	"context"
 	"fmt"
-	"github.com/bitclout/rosetta-bitclout/bitclout"
+	"github.com/deso-protocol/deso-rosetta/deso"
 	"strconv"
 
-	"github.com/bitclout/core/lib"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/deso-protocol/core/lib"
 )
 
 type AccountAPIService struct {
-	config *bitclout.Config
-	node   *bitclout.Node
+	config *deso.Config
+	node   *deso.Node
 }
 
-func NewAccountAPIService(config *bitclout.Config, node *bitclout.Node) server.AccountAPIServicer {
+func NewAccountAPIService(config *deso.Config, node *deso.Node) server.AccountAPIServicer {
 	return &AccountAPIService{
 		config: config,
 		node:   node,
@@ -27,7 +27,7 @@ func (s *AccountAPIService) AccountBalance(
 	ctx context.Context,
 	request *types.AccountBalanceRequest,
 ) (*types.AccountBalanceResponse, *types.Error) {
-	if s.config.Mode != bitclout.Online {
+	if s.config.Mode != deso.Online {
 		return nil, ErrUnavailableOffline
 	}
 
@@ -41,12 +41,12 @@ func (s *AccountAPIService) AccountBalance(
 
 	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
 	if err != nil {
-		return nil, wrapErr(ErrBitclout, err)
+		return nil, wrapErr(ErrDeSo, err)
 	}
 
 	utxoEntries, err := utxoView.GetUnspentUtxoEntrysForPublicKey(publicKeyBytes)
 	if err != nil {
-		return nil, wrapErr(ErrBitclout, err)
+		return nil, wrapErr(ErrDeSo, err)
 	}
 
 	var balance int64
@@ -74,7 +74,7 @@ func (s *AccountAPIService) AccountCoins(
 	ctx context.Context,
 	request *types.AccountCoinsRequest,
 ) (*types.AccountCoinsResponse, *types.Error) {
-	if s.config.Mode != bitclout.Online {
+	if s.config.Mode != deso.Online {
 		return nil, ErrUnavailableOffline
 	}
 
@@ -88,12 +88,12 @@ func (s *AccountAPIService) AccountCoins(
 
 	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
 	if err != nil {
-		return nil, wrapErr(ErrBitclout, err)
+		return nil, wrapErr(ErrDeSo, err)
 	}
 
 	utxoEntries, err := utxoView.GetUnspentUtxoEntrysForPublicKey(publicKeyBytes)
 	if err != nil {
-		return nil, wrapErr(ErrBitclout, err)
+		return nil, wrapErr(ErrDeSo, err)
 	}
 
 	coins := []*types.Coin{}
