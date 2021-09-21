@@ -12,7 +12,7 @@ import (
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/deso-protocol/core/lib"
-	"github.com/deso-protocol/deso-rosetta/deso"
+	"github.com/deso-protocol/rosetta-deso/deso"
 	merkletree "github.com/laser/go-merkle-tree"
 )
 

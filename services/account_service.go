@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
-	"github.com/deso-protocol/deso-rosetta/deso"
+	"github.com/deso-protocol/rosetta-deso/deso"
 	"strconv"
 
 	"github.com/coinbase/rosetta-sdk-go/server"

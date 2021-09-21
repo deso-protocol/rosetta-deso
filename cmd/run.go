@@ -16,8 +16,8 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	"github.com/deso-protocol/deso-rosetta/deso"
-	"github.com/deso-protocol/deso-rosetta/services"
+	"github.com/deso-protocol/rosetta-deso/deso"
+	"github.com/deso-protocol/rosetta-deso/services"
 )
 
 // runCmd represents the run command

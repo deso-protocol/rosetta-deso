@@ -1,7 +1,7 @@
 package services
 
 import (
-	"github.com/deso-protocol/deso-rosetta/deso"
+	"github.com/deso-protocol/rosetta-deso/deso"
 	"net/http"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"

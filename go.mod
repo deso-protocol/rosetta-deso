@@ -1,4 +1,4 @@
-module github.com/deso-protocol/deso-rosetta
+module github.com/deso-protocol/rosetta-deso
 
 go 1.16
 

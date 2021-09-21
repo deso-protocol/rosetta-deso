@@ -6,21 +6,21 @@ RUN apk add --update go=1.16.7-r0 gcc g++ vips-dev
 
 WORKDIR /deso/src
 
-COPY deso-rosetta/go.mod deso-rosetta/
-COPY deso-rosetta/go.sum deso-rosetta/
+COPY rosetta-deso/go.mod rosetta-deso/
+COPY rosetta-deso/go.sum rosetta-deso/
 COPY core/go.mod core/
 COPY core/go.sum core/
 COPY core/third_party/ core/third_party/
 
-WORKDIR /deso/src/deso-rosetta
+WORKDIR /deso/src/rosetta-deso
 
 RUN go mod download
 
-# include deso-rosetta src
-COPY deso-rosetta/deso          deso
-COPY deso-rosetta/cmd           cmd
-COPY deso-rosetta/services      services
-COPY deso-rosetta/main.go       .
+# include rosetta-deso src
+COPY rosetta-deso/deso          deso
+COPY rosetta-deso/cmd           cmd
+COPY rosetta-deso/services      services
+COPY rosetta-deso/main.go       .
 
 # include core src
 COPY core/desohash ../core/desohash
@@ -28,10 +28,10 @@ COPY core/cmd       ../core/cmd
 COPY core/lib       ../core/lib
 COPY core/migrate   ../core/migrate
 
-# build deso-rosetta
-RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/deso-rosetta main.go
+# build rosetta-deso
+RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
 
 # create tiny image
 FROM alpine:edge
 
-COPY --from=rosetta /deso/src/deso-rosetta/bin/deso-rosetta /deso/bin/deso-rosetta
+COPY --from=rosetta /deso/src/rosetta-deso/bin/rosetta-deso /deso/bin/rosetta-deso
