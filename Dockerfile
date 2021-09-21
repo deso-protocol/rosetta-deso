@@ -4,34 +4,34 @@ RUN apk update
 RUN apk upgrade
 RUN apk add --update go=1.16.7-r0 gcc g++ vips-dev
 
-WORKDIR /bitclout/src
+WORKDIR /deso/src
 
-COPY rosetta-bitclout/go.mod rosetta-bitclout/
-COPY rosetta-bitclout/go.sum rosetta-bitclout/
+COPY rosetta-deso/go.mod rosetta-deso/
+COPY rosetta-deso/go.sum rosetta-deso/
 COPY core/go.mod core/
 COPY core/go.sum core/
 COPY core/third_party/ core/third_party/
 
-WORKDIR /bitclout/src/rosetta-bitclout
+WORKDIR /deso/src/rosetta-deso
 
 RUN go mod download
 
-# include rosetta-bitclout src
-COPY rosetta-bitclout/bitclout      bitclout
-COPY rosetta-bitclout/cmd           cmd
-COPY rosetta-bitclout/services      services
-COPY rosetta-bitclout/main.go       .
+# include rosetta-deso src
+COPY rosetta-deso/deso          deso
+COPY rosetta-deso/cmd           cmd
+COPY rosetta-deso/services      services
+COPY rosetta-deso/main.go       .
 
 # include core src
-COPY core/clouthash ../core/clouthash
+COPY core/desohash ../core/desohash
 COPY core/cmd       ../core/cmd
 COPY core/lib       ../core/lib
 COPY core/migrate   ../core/migrate
 
-# build rosetta-bitclout
-RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-bitclout main.go
+# build rosetta-deso
+RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
 
 # create tiny image
 FROM alpine:edge
 
-COPY --from=rosetta /bitclout/src/rosetta-bitclout/bin/rosetta-bitclout /bitclout/bin/rosetta-bitclout
+COPY --from=rosetta /deso/src/rosetta-deso/bin/rosetta-deso /deso/bin/rosetta-deso

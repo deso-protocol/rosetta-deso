@@ -1,6 +1,6 @@
 package main
 
-import "github.com/bitclout/rosetta-bitclout/cmd"
+import "github.com/deso-protocol/rosetta-deso/cmd"
 
 func main() {
 	cmd.Execute()

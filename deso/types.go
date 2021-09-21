@@ -1,4 +1,4 @@
-package bitclout
+package deso
 
 import "github.com/coinbase/rosetta-sdk-go/types"
 
@@ -18,7 +18,7 @@ const (
 
 var (
 	Currency = types.Currency{
-		Symbol:   "CLOUT",
+		Symbol:   "DESO",
 		Decimals: 9,
 	}
 

@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/bitclout/core/lib"
+	"github.com/deso-protocol/core/lib"
 	"os"
 )
 

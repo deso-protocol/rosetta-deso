@@ -1,7 +1,7 @@
 package services
 
 import (
-	"github.com/bitclout/rosetta-bitclout/bitclout"
+	"github.com/deso-protocol/rosetta-deso/deso"
 	"net/http"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"
@@ -9,8 +9,8 @@ import (
 )
 
 func NewBlockchainRouter(
-	config *bitclout.Config,
-	node *bitclout.Node,
+	config *deso.Config,
+	node *deso.Node,
 	asserter *asserter.Asserter,
 ) http.Handler {
 	networkAPIService := NewNetworkAPIService(config, node)

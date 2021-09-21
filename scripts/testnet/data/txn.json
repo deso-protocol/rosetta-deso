@@ -1,6 +1,6 @@
 {
 	"network_identifier": {
-		"blockchain": "Bitclout",
+		"blockchain": "DeSo",
 		"network": "TESTNET"
 	},
 	"operations": [
@@ -16,7 +16,7 @@
 			"amount": {
 				"value": "-799960000",
 				"currency": {
-					"symbol": "tCLOUT",
+					"symbol": "tDESO",
 					"decimals": 9
 				}
 			},
@@ -39,7 +39,7 @@
 			"amount": {
 				"value": "150977271",
 				"currency": {
-					"symbol": "tCLOUT",
+					"symbol": "tDESO",
 					"decimals": 9
 				}
 			}
@@ -56,7 +56,7 @@
 			"amount": {
 				"value": "648962729",
 				"currency": {
-					"symbol": "tCLOUT",
+					"symbol": "tDESO",
 					"decimals": 9
 				}
 			}

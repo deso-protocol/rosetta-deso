@@ -1,6 +1,6 @@
 request_funds(1){
   find_account{
-    currency = {"symbol":"tCLOUT", "decimals":9};
+    currency = {"symbol":"tDESO", "decimals":9};
     random_account = find_balance({
           "minimum_balance":{
             "value": "0",
@@ -13,7 +13,7 @@ request_funds(1){
 
 create_account(1){
   create{
-    network = {"network":"TESTNET", "blockchain":"Bitclout"};
+    network = {"network":"TESTNET", "blockchain":"DeSo"};
     key = generate_key({"curve_type": "secp256k1"});
     account = derive({
       "network_identifier": {{network}},
@@ -30,8 +30,8 @@ create_account(1){
 
 transfer(10){
   transfer_dry_run{
-    transfer_dry_run.network = {"network":"TESTNET", "blockchain":"Bitclout"};
-    currency = {"symbol":"tCLOUT", "decimals":9};
+    transfer_dry_run.network = {"network":"TESTNET", "blockchain":"DeSo"};
+    currency = {"symbol":"tDESO", "decimals":9};
 
     // We set the max_fee_amount to know how much buffer we should
     // leave for fee payment when selecting a sender account.
@@ -151,8 +151,8 @@ transfer(10){
 
 return_funds(10){
   transfer_dry_run{
-    transfer_dry_run.network = {"network":"TESTNET", "blockchain":"Bitclout"};
-    currency = {"symbol":"tCLOUT", "decimals":9};
+    transfer_dry_run.network = {"network":"TESTNET", "blockchain":"DeSo"};
+    currency = {"symbol":"tDESO", "decimals":9};
 
     // We look for a sender that is able to pay the
     // max_fee_amount + min_utxo size (reserved_amount is max_fee_amount + min_utxo size).
