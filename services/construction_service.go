@@ -8,11 +8,11 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/deso-protocol/core/lib"
-	"github.com/deso-protocol/deso-rosetta/deso"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/deso-protocol/core/lib"
+	"github.com/deso-protocol/deso-rosetta/deso"
 	merkletree "github.com/laser/go-merkle-tree"
 )
 

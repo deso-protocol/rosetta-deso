@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/deso-protocol/core/lib"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/deso-protocol/core/lib"
 	"github.com/spf13/viper"
 )
 

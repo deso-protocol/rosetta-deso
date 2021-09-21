@@ -6,10 +6,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/deso-protocol/core/lib"
 	"github.com/btcsuite/btcd/addrmgr"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/deso-protocol/core/lib"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/glog"
 	"github.com/sasha-s/go-deadlock"

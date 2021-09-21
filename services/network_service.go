@@ -5,9 +5,9 @@ import (
 	"github.com/deso-protocol/core/lib"
 	"strconv"
 
-	"github.com/deso-protocol/deso-rosetta/deso"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/deso-protocol/deso-rosetta/deso"
 )
 
 type NetworkAPIService struct {
