@@ -146,6 +146,11 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			transaction.Operations = append(transaction.Operations, op)
 		}
 
+		// Add implicit outputs from TXIndex
+		for _, op := range node.getImplicitOutputs(txn, len(transaction.Operations)) {
+			transaction.Operations = append(transaction.Operations, op)
+		}
+
 		transactions = append(transactions, transaction)
 	}
 
@@ -155,6 +160,58 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		Timestamp:             int64(block.Header.TstampSecs) * 1000,
 		Transactions:          transactions,
 	}
+}
+
+func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, numOperations int) []*types.Operation {
+	if node.TXIndex == nil {
+		return nil
+	}
+
+	txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), txn.Hash())
+	if txnMeta == nil {
+		return nil
+	}
+
+	var operations []*types.Operation
+	numOutputs := uint32(len(txn.TxOutputs))
+
+	for _, utxoOp := range txnMeta.BasicTransferTxindexMetadata.UtxoOps {
+		if utxoOp.Type == lib.OperationTypeAddUtxo &&
+			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
+			utxoOp.Entry.UtxoKey.Index >= numOutputs {
+
+			networkIndex := int64(utxoOp.Entry.UtxoKey.Index)
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index:        int64(numOperations),
+					NetworkIndex: &networkIndex,
+				},
+
+				Account: &types.AccountIdentifier{
+					Address: lib.Base58CheckEncode(utxoOp.Entry.PublicKey, false, node.Params),
+				},
+
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(utxoOp.Entry.AmountNanos, 10),
+					Currency: &Currency,
+				},
+
+				CoinChange: &types.CoinChange{
+					CoinIdentifier: &types.CoinIdentifier{
+						Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
+					},
+					CoinAction: types.CoinCreated,
+				},
+
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			})
+
+			numOperations += 1
+		}
+	}
+
+	return operations
 }
 
 func (node *Node) getInputAmount(input *lib.DeSoInput) *types.Amount {
@@ -179,8 +236,7 @@ func (node *Node) getInputAmount(input *lib.DeSoInput) *types.Amount {
 		return nil
 	}
 
-	// Iterate over the UtxoOperations created by the txn
-	// to find the one corresponding to the index specified.
+	// Iterate over the UtxoOperations created by the txn to find the one corresponding to the index specified.
 	for _, utxoOp := range txnMeta.BasicTransferTxindexMetadata.UtxoOps {
 		if utxoOp.Type == lib.OperationTypeAddUtxo &&
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
@@ -193,7 +249,6 @@ func (node *Node) getInputAmount(input *lib.DeSoInput) *types.Amount {
 	}
 
 	// If we get here then we failed to find the input we were looking for.
-	fmt.Println("Error: getInputAmount requested input that does not exist "+
-		"for txn %v index %v", lib.PkToStringBoth(input.TxID[:]), input.Index)
+	fmt.Printf("Error: input missing for txn %v index %v\n", lib.PkToStringBoth(input.TxID[:]), input.Index)
 	return nil
 }
