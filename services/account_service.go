@@ -39,19 +39,24 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
+	dbView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
-	utxoEntries, err := utxoView.GetUnspentUtxoEntrysForPublicKey(publicKeyBytes)
+	dbBalance, err := dbView.GetDeSoBalanceNanosForPublicKey(publicKeyBytes)
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
-	var balance int64
-	for _, utxoEntry := range utxoEntries {
-		balance += int64(utxoEntry.AmountNanos)
+	mempoolView, err := s.node.GetMempool().GetAugmentedUniversalView()
+	if err != nil {
+		return nil, wrapErr(ErrDeSo, err)
+	}
+
+	mempoolBalance, err := mempoolView.GetDeSoBalanceNanosForPublicKey(publicKeyBytes)
+	if err != nil {
+		return nil, wrapErr(ErrDeSo, err)
 	}
 
 	block := &types.BlockIdentifier{
@@ -63,8 +68,11 @@ func (s *AccountAPIService) AccountBalance(
 		BlockIdentifier: block,
 		Balances: []*types.Amount{
 			{
-				Value:    strconv.FormatInt(balance, 10),
+				Value:    strconv.FormatUint(dbBalance, 10),
 				Currency: s.config.Currency,
+				Metadata: map[string]interface{}{
+					"MempoolBalance": strconv.FormatUint(mempoolBalance, 10),
+				},
 			},
 		},
 	}, nil
