@@ -8,4 +8,5 @@ set -v
   --network TESTNET \
   --miner-public-keys tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF \
   --regtest \
+  --txindex \
 )
