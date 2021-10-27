@@ -51,28 +51,33 @@ var (
 	}
 
 	ErrMultipleSigners = &types.Error{
-		Code: 7,
+		Code:    7,
 		Message: "A transaction can only have one signer",
 	}
 
 	ErrInvalidPublicKey = &types.Error{
-		Code: 8,
+		Code:    8,
 		Message: "Unable to parse public key",
 	}
 
 	ErrInvalidCoin = &types.Error{
-		Code: 9,
+		Code:    9,
 		Message: "Unable to parse coin",
 	}
 
 	ErrInvalidTransaction = &types.Error{
-		Code: 10,
+		Code:    10,
 		Message: "Unable to parse transaction",
 	}
 
 	ErrInvalidSignature = &types.Error{
 		Code:    11,
 		Message: "Unable to sign",
+	}
+
+	ErrMissingProfile = &types.Error{
+		Code:    12,
+		Message: "Account does not have a profile",
 	}
 )
 

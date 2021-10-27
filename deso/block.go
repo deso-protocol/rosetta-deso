@@ -146,9 +146,25 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			transaction.Operations = append(transaction.Operations, op)
 		}
 
-		// Add implicit outputs from TXIndex
-		for _, op := range node.getImplicitOutputs(txn, len(transaction.Operations)) {
-			transaction.Operations = append(transaction.Operations, op)
+		if node.TXIndex != nil {
+			txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), txn.Hash())
+			if txnMeta != nil {
+				// Add implicit outputs from TXIndex
+				implicitOutputs := node.getImplicitOutputs(txn, txnMeta, len(transaction.Operations))
+				transaction.Operations = append(transaction.Operations, implicitOutputs...)
+
+				// Add inputs/outputs for creator coins
+				creatorCoinOps := node.getCreatorCoinOps(txnMeta, len(transaction.Operations), implicitOutputs)
+				transaction.Operations = append(transaction.Operations, creatorCoinOps...)
+
+				// Add inputs/outputs for swap identity
+				swapIdentityOps := node.getSwapIdentityOps(txnMeta, len(transaction.Operations))
+				transaction.Operations = append(transaction.Operations, swapIdentityOps...)
+
+				// Add inputs for accept nft bid
+				acceptNftOps := node.getAcceptNFTOps(txnMeta, len(transaction.Operations))
+				transaction.Operations = append(transaction.Operations, acceptNftOps...)
+			}
 		}
 
 		transactions = append(transactions, transaction)
@@ -162,20 +178,175 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	}
 }
 
-func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, numOperations int) []*types.Operation {
-	if node.TXIndex == nil {
-		return nil
-	}
-
-	txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), txn.Hash())
-	if txnMeta == nil {
+func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, implicitOutputs []*types.Operation) []*types.Operation {
+	creatorCoinMeta := meta.CreatorCoinTxindexMetadata
+	if creatorCoinMeta == nil {
 		return nil
 	}
 
 	var operations []*types.Operation
+
+	var creatorPublicKey string
+	for _, key := range meta.AffectedPublicKeys {
+		if key.Metadata == "CreatorPublicKey" {
+			creatorPublicKey = key.PublicKeyBase58Check
+			break
+		}
+	}
+
+	account := &types.AccountIdentifier{
+		Address: creatorPublicKey,
+		SubAccount: &types.SubAccountIdentifier{
+			Address: "CREATOR_COIN",
+		},
+	}
+
+	if creatorCoinMeta.OperationType == "sell" {
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    InputOpType,
+			Status:  &SuccessStatus,
+			Account: account,
+			Amount: &types.Amount{
+				Value:    fmt.Sprintf("-%s", implicitOutputs[0].Amount.Value),
+				Currency: &Currency,
+			},
+		})
+	} else if creatorCoinMeta.OperationType == "buy" {
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: account,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(creatorCoinMeta.DeSoToSellNanos, 10),
+				Currency: &Currency,
+			},
+		})
+	}
+
+	return operations
+}
+
+func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) []*types.Operation {
+	swapMeta := meta.SwapIdentityTxindexMetadata
+	if swapMeta == nil {
+		return nil
+	}
+
+	var operations []*types.Operation
+
+	fromAccount := &types.AccountIdentifier{
+		Address: swapMeta.FromPublicKeyBase58Check,
+		SubAccount: &types.SubAccountIdentifier{
+			Address: "CREATOR_COIN",
+		},
+	}
+
+	toAccount := &types.AccountIdentifier{
+		Address: swapMeta.ToPublicKeyBase58Check,
+		SubAccount: &types.SubAccountIdentifier{
+			Address: "CREATOR_COIN",
+		},
+	}
+
+	// Debit both accounts
+	operations = append(operations, &types.Operation{
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: int64(numOps),
+		},
+		Type:    OutputOpType,
+		Status:  &SuccessStatus,
+		Account: fromAccount,
+		Amount: &types.Amount{
+			Value:    fmt.Sprintf("-%d", swapMeta.FromDeSoLockedNanos),
+			Currency: &Currency,
+		},
+	})
+
+	operations = append(operations, &types.Operation{
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: int64(numOps) + 1,
+		},
+		Type:    OutputOpType,
+		Status:  &SuccessStatus,
+		Account: toAccount,
+		Amount: &types.Amount{
+			Value:    fmt.Sprintf("-%d", swapMeta.ToDeSoLockedNanos),
+			Currency: &Currency,
+		},
+	})
+
+	// Credit both accounts
+	operations = append(operations, &types.Operation{
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: int64(numOps) + 2,
+		},
+		Type:    InputOpType,
+		Status:  &SuccessStatus,
+		Account: fromAccount,
+		Amount: &types.Amount{
+			Value:    strconv.FormatUint(swapMeta.ToDeSoLockedNanos, 10),
+			Currency: &Currency,
+		},
+	})
+
+	operations = append(operations, &types.Operation{
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: int64(numOps) + 3,
+		},
+		Type:    InputOpType,
+		Status:  &SuccessStatus,
+		Account: toAccount,
+		Amount: &types.Amount{
+			Value:    strconv.FormatUint(swapMeta.FromDeSoLockedNanos, 10),
+			Currency: &Currency,
+		},
+	})
+
+	return operations
+}
+
+func (node *Node) getAcceptNFTOps(meta *lib.TransactionMetadata, numOps int) []*types.Operation {
+	nftMeta := meta.AcceptNFTBidTxindexMetadata
+	if nftMeta == nil {
+		return nil
+	}
+
+	var operations []*types.Operation
+
+	toAccount := &types.AccountIdentifier{
+		Address: nftMeta.CreatorPublicKeyBase58Check,
+		SubAccount: &types.SubAccountIdentifier{
+			Address: "CREATOR_COIN",
+		},
+	}
+
+	operations = append(operations, &types.Operation{
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: int64(numOps),
+		},
+		Type:    InputOpType,
+		Status:  &SuccessStatus,
+		Account: toAccount,
+		Amount: &types.Amount{
+			Value:    strconv.FormatUint(nftMeta.CreatorCoinRoyaltyNanos, 10),
+			Currency: &Currency,
+		},
+	})
+
+	return operations
+}
+
+func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
+	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
 
-	for _, utxoOp := range txnMeta.BasicTransferTxindexMetadata.UtxoOps {
+	for _, utxoOp := range meta.BasicTransferTxindexMetadata.UtxoOps {
 		if utxoOp.Type == lib.OperationTypeAddUtxo &&
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
 			utxoOp.Entry.UtxoKey.Index >= numOutputs {
@@ -183,7 +354,7 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, numOperations int) []*
 			networkIndex := int64(utxoOp.Entry.UtxoKey.Index)
 			operations = append(operations, &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index:        int64(numOperations),
+					Index:        int64(numOps),
 					NetworkIndex: &networkIndex,
 				},
 
@@ -207,7 +378,7 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, numOperations int) []*
 				Type:   OutputOpType,
 			})
 
-			numOperations += 1
+			numOps += 1
 		}
 	}
 
