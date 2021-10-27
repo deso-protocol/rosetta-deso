@@ -41,9 +41,9 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 
 	syncStatus := &types.SyncStatus{
 		CurrentIndex: new(int64),
-		TargetIndex: new(int64),
-		Stage: new(string),
-		Synced: new(bool),
+		TargetIndex:  new(int64),
+		Stage:        new(string),
+		Synced:       new(bool),
 	}
 
 	// If TXIndex is enabled we wait for it to process blocks
@@ -62,7 +62,7 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	// Synced means we are fully synced OR we are only three blocks behind
 	isSyncing := *syncStatus.Stage == lib.SyncStateSyncingBlocks.String() || *syncStatus.Stage == lib.SyncStateNeedBlocksss.String()
 	*syncStatus.Synced = *syncStatus.Stage == lib.SyncStateFullyCurrent.String() ||
-		(isSyncing && (*syncStatus.TargetIndex - *syncStatus.CurrentIndex) <= 3)
+		(isSyncing && (*syncStatus.TargetIndex-*syncStatus.CurrentIndex) <= 3)
 
 	genesisBlock := s.node.GetBlockAtHeight(0)
 	currentBlock := s.node.GetBlockAtHeight(*syncStatus.CurrentIndex)
@@ -80,7 +80,7 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.NetworkRequest) (*types.NetworkOptionsResponse, *types.Error) {
 	return &types.NetworkOptionsResponse{
 		Version: &types.Version{
-			RosettaVersion: "0.6.10",
+			RosettaVersion: "1.4.10",
 			NodeVersion:    "1.2.2",
 		},
 		Allow: &types.Allow{
