@@ -186,6 +186,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 
 	var operations []*types.Operation
 
+	// Extract creator public key
 	var creatorPublicKey string
 	for _, key := range meta.AffectedPublicKeys {
 		if key.Metadata == "CreatorPublicKey" {
@@ -202,6 +203,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 	}
 
 	if creatorCoinMeta.OperationType == "sell" {
+		// Selling a creator coin uses the creator coin as input
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: int64(numOps),
@@ -215,6 +217,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 			},
 		})
 	} else if creatorCoinMeta.OperationType == "buy" {
+		// Buying the creator coin generates an output for the creator coin
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: int64(numOps),
@@ -263,7 +266,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		Status:  &SuccessStatus,
 		Account: fromAccount,
 		Amount: &types.Amount{
-			Value:    fmt.Sprintf("-%d", swapMeta.ToDeSoLockedNanos),
+			Value:    strconv.FormatInt(int64(swapMeta.ToDeSoLockedNanos)*-1, 10),
 			Currency: &Currency,
 		},
 	})
@@ -276,7 +279,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		Status:  &SuccessStatus,
 		Account: toAccount,
 		Amount: &types.Amount{
-			Value:    fmt.Sprintf("-%d", swapMeta.FromDeSoLockedNanos),
+			Value:    strconv.FormatInt(int64(swapMeta.FromDeSoLockedNanos)*-1, 10),
 			Currency: &Currency,
 		},
 	})
@@ -335,7 +338,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 		}
 	}
 
-	// Add implicit inputs we used from the bidder
+	// Add an operation for each bidder input we consume
 	txnMeta := txn.TxnMeta.(*lib.AcceptNFTBidMetadata)
 	for _, input := range txnMeta.BidderInputs {
 		inputAmount := node.getInputAmount(input)
@@ -363,7 +366,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 		numOps += 1
 	}
 
-	// Add creator coin royalty output
+	// Add an output representing the creator coin royalty
 	operations = append(operations, &types.Operation{
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps),
