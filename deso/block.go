@@ -162,7 +162,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				transaction.Operations = append(transaction.Operations, swapIdentityOps...)
 
 				// Add inputs for accept nft bid
-				acceptNftOps := node.getAcceptNFTOps(txnMeta, len(transaction.Operations))
+				acceptNftOps := node.getAcceptNFTOps(txn, txnMeta, len(transaction.Operations))
 				transaction.Operations = append(transaction.Operations, acceptNftOps...)
 			}
 		}
@@ -210,7 +210,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 			Status:  &SuccessStatus,
 			Account: account,
 			Amount: &types.Amount{
-				Value:    fmt.Sprintf("-%s", implicitOutputs[0].Amount.Value),
+				Value:    strconv.FormatInt(int64(creatorCoinMeta.DESOLockedNanosDiff)*-1, 10),
 				Currency: &Currency,
 			},
 		})
@@ -223,7 +223,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 			Status:  &SuccessStatus,
 			Account: account,
 			Amount: &types.Amount{
-				Value:    strconv.FormatUint(creatorCoinMeta.DeSoToSellNanos, 10),
+				Value:    strconv.FormatUint(creatorCoinMeta.DESOLockedNanosDiff, 10),
 				Currency: &Currency,
 			},
 		})
@@ -259,11 +259,11 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps),
 		},
-		Type:    OutputOpType,
+		Type:    InputOpType,
 		Status:  &SuccessStatus,
 		Account: fromAccount,
 		Amount: &types.Amount{
-			Value:    fmt.Sprintf("-%d", swapMeta.FromDeSoLockedNanos),
+			Value:    fmt.Sprintf("-%d", swapMeta.ToDeSoLockedNanos),
 			Currency: &Currency,
 		},
 	})
@@ -272,11 +272,11 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps) + 1,
 		},
-		Type:    OutputOpType,
+		Type:    InputOpType,
 		Status:  &SuccessStatus,
 		Account: toAccount,
 		Amount: &types.Amount{
-			Value:    fmt.Sprintf("-%d", swapMeta.ToDeSoLockedNanos),
+			Value:    fmt.Sprintf("-%d", swapMeta.FromDeSoLockedNanos),
 			Currency: &Currency,
 		},
 	})
@@ -286,11 +286,11 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps) + 2,
 		},
-		Type:    InputOpType,
+		Type:    OutputOpType,
 		Status:  &SuccessStatus,
 		Account: fromAccount,
 		Amount: &types.Amount{
-			Value:    strconv.FormatUint(swapMeta.ToDeSoLockedNanos, 10),
+			Value:    strconv.FormatUint(swapMeta.FromDeSoLockedNanos, 10),
 			Currency: &Currency,
 		},
 	})
@@ -299,11 +299,11 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps) + 3,
 		},
-		Type:    InputOpType,
+		Type:    OutputOpType,
 		Status:  &SuccessStatus,
 		Account: toAccount,
 		Amount: &types.Amount{
-			Value:    strconv.FormatUint(swapMeta.FromDeSoLockedNanos, 10),
+			Value:    strconv.FormatUint(swapMeta.ToDeSoLockedNanos, 10),
 			Currency: &Currency,
 		},
 	})
@@ -311,7 +311,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 	return operations
 }
 
-func (node *Node) getAcceptNFTOps(meta *lib.TransactionMetadata, numOps int) []*types.Operation {
+func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
 	nftMeta := meta.AcceptNFTBidTxindexMetadata
 	if nftMeta == nil {
 		return nil
@@ -326,11 +326,49 @@ func (node *Node) getAcceptNFTOps(meta *lib.TransactionMetadata, numOps int) []*
 		},
 	}
 
+	// Extract bidder key
+	var bidderPublicKey string
+	for _, pubKey := range meta.AffectedPublicKeys {
+		if pubKey.Metadata == "NFTBidderPublicKeyBase58Check" {
+			bidderPublicKey = pubKey.PublicKeyBase58Check
+			break
+		}
+	}
+
+	// Add implicit inputs we used from the bidder
+	txnMeta := txn.TxnMeta.(*lib.AcceptNFTBidMetadata)
+	for _, input := range txnMeta.BidderInputs {
+		inputAmount := node.getInputAmount(input)
+		networkIndex := int64(input.Index)
+
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index:        int64(numOps),
+				NetworkIndex: &networkIndex,
+			},
+			Type:   InputOpType,
+			Status: &SuccessStatus,
+			Account: &types.AccountIdentifier{
+				Address: bidderPublicKey,
+			},
+			Amount: inputAmount,
+			CoinChange: &types.CoinChange{
+				CoinIdentifier: &types.CoinIdentifier{
+					Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
+				},
+				CoinAction: types.CoinSpent,
+			},
+		})
+
+		numOps += 1
+	}
+
+	// Add creator coin royalty output
 	operations = append(operations, &types.Operation{
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps),
 		},
-		Type:    InputOpType,
+		Type:    OutputOpType,
 		Status:  &SuccessStatus,
 		Account: toAccount,
 		Amount: &types.Amount{
