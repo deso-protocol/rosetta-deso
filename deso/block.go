@@ -197,7 +197,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 	account := &types.AccountIdentifier{
 		Address: creatorPublicKey,
 		SubAccount: &types.SubAccountIdentifier{
-			Address: "CREATOR_COIN",
+			Address: CreatorCoin,
 		},
 	}
 
@@ -243,14 +243,14 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 	fromAccount := &types.AccountIdentifier{
 		Address: swapMeta.FromPublicKeyBase58Check,
 		SubAccount: &types.SubAccountIdentifier{
-			Address: "CREATOR_COIN",
+			Address: CreatorCoin,
 		},
 	}
 
 	toAccount := &types.AccountIdentifier{
 		Address: swapMeta.ToPublicKeyBase58Check,
 		SubAccount: &types.SubAccountIdentifier{
-			Address: "CREATOR_COIN",
+			Address: CreatorCoin,
 		},
 	}
 
@@ -322,7 +322,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 	toAccount := &types.AccountIdentifier{
 		Address: nftMeta.CreatorPublicKeyBase58Check,
 		SubAccount: &types.SubAccountIdentifier{
-			Address: "CREATOR_COIN",
+			Address: CreatorCoin,
 		},
 	}
 

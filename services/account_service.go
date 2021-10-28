@@ -62,7 +62,7 @@ func (s *AccountAPIService) AccountBalance(
 		if err != nil {
 			return nil, wrapErr(ErrDeSo, err)
 		}
-	} else if request.AccountIdentifier.SubAccount.Address == "CREATOR_COIN" {
+	} else if request.AccountIdentifier.SubAccount.Address == deso.CreatorCoin {
 		dbProfileEntry := dbView.GetProfileEntryForPublicKey(publicKeyBytes)
 		if dbProfileEntry == nil {
 			return nil, ErrMissingProfile
