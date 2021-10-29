@@ -202,6 +202,12 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 		},
 	}
 
+	// This amount is negative for sells and positive for buys
+	amount := &types.Amount{
+		Value:    strconv.FormatInt(creatorCoinMeta.DESOLockedNanosDiff, 10),
+		Currency: &Currency,
+	}
+
 	if creatorCoinMeta.OperationType == "sell" {
 		// Selling a creator coin uses the creator coin as input
 		operations = append(operations, &types.Operation{
@@ -211,10 +217,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 			Type:    InputOpType,
 			Status:  &SuccessStatus,
 			Account: account,
-			Amount: &types.Amount{
-				Value:    strconv.FormatInt(int64(creatorCoinMeta.DESOLockedNanosDiff)*-1, 10),
-				Currency: &Currency,
-			},
+			Amount:  amount,
 		})
 	} else if creatorCoinMeta.OperationType == "buy" {
 		// Buying the creator coin generates an output for the creator coin
@@ -225,10 +228,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 			Type:    OutputOpType,
 			Status:  &SuccessStatus,
 			Account: account,
-			Amount: &types.Amount{
-				Value:    strconv.FormatUint(creatorCoinMeta.DESOLockedNanosDiff, 10),
-				Currency: &Currency,
-			},
+			Amount:  amount,
 		})
 	}
 
@@ -325,7 +325,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 
 	var operations []*types.Operation
 
-	toAccount := &types.AccountIdentifier{
+	royaltyAccount := &types.AccountIdentifier{
 		Address: nftMeta.CreatorPublicKeyBase58Check,
 		SubAccount: &types.SubAccountIdentifier{
 			Address: CreatorCoin,
@@ -360,7 +360,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 			Amount: inputAmount,
 			CoinChange: &types.CoinChange{
 				CoinIdentifier: &types.CoinIdentifier{
-					Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
+					Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), networkIndex),
 				},
 				CoinAction: types.CoinSpent,
 			},
@@ -376,7 +376,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 		},
 		Type:    OutputOpType,
 		Status:  &SuccessStatus,
-		Account: toAccount,
+		Account: royaltyAccount,
 		Amount: &types.Amount{
 			Value:    strconv.FormatUint(nftMeta.CreatorCoinRoyaltyNanos, 10),
 			Currency: &Currency,
