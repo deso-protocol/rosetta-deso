@@ -44,19 +44,37 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
-	dbBalance, err := dbView.GetDeSoBalanceNanosForPublicKey(publicKeyBytes)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
-
 	mempoolView, err := s.node.GetMempool().GetAugmentedUniversalView()
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
-	mempoolBalance, err := mempoolView.GetDeSoBalanceNanosForPublicKey(publicKeyBytes)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
+	var dbBalance uint64
+	var mempoolBalance uint64
+
+	if request.AccountIdentifier.SubAccount == nil {
+		dbBalance, err = dbView.GetDeSoBalanceNanosForPublicKey(publicKeyBytes)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+
+		mempoolBalance, err = mempoolView.GetDeSoBalanceNanosForPublicKey(publicKeyBytes)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+	} else if request.AccountIdentifier.SubAccount.Address == deso.CreatorCoin {
+		dbProfileEntry := dbView.GetProfileEntryForPublicKey(publicKeyBytes)
+		if dbProfileEntry == nil {
+			return nil, ErrMissingProfile
+		}
+
+		mempoolProfileEntry := mempoolView.GetProfileEntryForPublicKey(publicKeyBytes)
+		if mempoolProfileEntry == nil {
+			return nil, ErrMissingProfile
+		}
+
+		dbBalance = dbProfileEntry.CoinEntry.DeSoLockedNanos
+		mempoolBalance = mempoolProfileEntry.CoinEntry.DeSoLockedNanos
 	}
 
 	block := &types.BlockIdentifier{

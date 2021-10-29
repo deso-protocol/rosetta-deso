@@ -14,6 +14,10 @@ const (
 
 	Mainnet Network = "MAINNET"
 	Testnet Network = "TESTNET"
+
+	// CreatorCoin is the SubAccount address for a public key's
+	// total DESO locked in their creator coin.
+	CreatorCoin = "CREATOR_COIN"
 )
 
 var (
@@ -27,7 +31,7 @@ var (
 		OutputOpType,
 	}
 
-	SuccessStatus = "SUCCESS"
+	SuccessStatus  = "SUCCESS"
 	RevertedStatus = "REVERTED"
 
 	MinFeeRateNanosPerKB = uint64(1000)
