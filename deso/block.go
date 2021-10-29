@@ -154,7 +154,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				transaction.Operations = append(transaction.Operations, implicitOutputs...)
 
 				// Add inputs/outputs for creator coins
-				creatorCoinOps := node.getCreatorCoinOps(txnMeta, len(transaction.Operations), implicitOutputs)
+				creatorCoinOps := node.getCreatorCoinOps(txn, txnMeta, len(transaction.Operations))
 				transaction.Operations = append(transaction.Operations, creatorCoinOps...)
 
 				// Add inputs/outputs for swap identity
@@ -178,7 +178,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	}
 }
 
-func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, implicitOutputs []*types.Operation) []*types.Operation {
+func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
 	creatorCoinMeta := meta.CreatorCoinTxindexMetadata
 	if creatorCoinMeta == nil {
 		return nil
@@ -208,7 +208,8 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 		Currency: &Currency,
 	}
 
-	if creatorCoinMeta.OperationType == "sell" {
+	realTxnMeta := txn.TxnMeta.(*lib.CreatorCoinMetadataa)
+	if realTxnMeta.OperationType == lib.CreatorCoinOperationTypeSell {
 		// Selling a creator coin uses the creator coin as input
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
@@ -219,7 +220,7 @@ func (node *Node) getCreatorCoinOps(meta *lib.TransactionMetadata, numOps int, i
 			Account: account,
 			Amount:  amount,
 		})
-	} else if creatorCoinMeta.OperationType == "buy" {
+	} else if realTxnMeta.OperationType == lib.CreatorCoinOperationTypeBuy {
 		// Buying the creator coin generates an output for the creator coin
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
