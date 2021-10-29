@@ -257,7 +257,10 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		},
 	}
 
-	// Debit both accounts
+	// TXIndex creates metadata after a transaction has been connected. ToDeSoLockedNanos and FromDeSoLockedNanos
+	// are the total DESO locked for the respective accounts after the swap has occurred.
+
+	// We subtract the now-swaped amounts from the opposite accounts
 	operations = append(operations, &types.Operation{
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps),
@@ -284,7 +287,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		},
 	})
 
-	// Credit both accounts
+	// Then we add the now-swapped amounts to the correct accounts
 	operations = append(operations, &types.Operation{
 		OperationIdentifier: &types.OperationIdentifier{
 			Index: int64(numOps) + 2,
