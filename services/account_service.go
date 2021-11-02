@@ -64,17 +64,14 @@ func (s *AccountAPIService) AccountBalance(
 		}
 	} else if request.AccountIdentifier.SubAccount.Address == deso.CreatorCoin {
 		dbProfileEntry := dbView.GetProfileEntryForPublicKey(publicKeyBytes)
-		if dbProfileEntry == nil {
-			return nil, ErrMissingProfile
+		if dbProfileEntry != nil {
+			dbBalance = dbProfileEntry.CoinEntry.DeSoLockedNanos
 		}
 
 		mempoolProfileEntry := mempoolView.GetProfileEntryForPublicKey(publicKeyBytes)
-		if mempoolProfileEntry == nil {
-			return nil, ErrMissingProfile
+		if mempoolProfileEntry != nil {
+			mempoolBalance = mempoolProfileEntry.CoinEntry.DeSoLockedNanos
 		}
-
-		dbBalance = dbProfileEntry.CoinEntry.DeSoLockedNanos
-		mempoolBalance = mempoolProfileEntry.CoinEntry.DeSoLockedNanos
 	}
 
 	block := &types.BlockIdentifier{
