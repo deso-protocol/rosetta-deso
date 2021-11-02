@@ -69,16 +69,6 @@ var (
 		Code:    10,
 		Message: "Unable to parse transaction",
 	}
-
-	ErrInvalidSignature = &types.Error{
-		Code:    11,
-		Message: "Unable to sign",
-	}
-
-	ErrMissingProfile = &types.Error{
-		Code:    12,
-		Message: "Account does not have a profile",
-	}
 )
 
 // wrapErr adds details to the types.Error provided. We use a function
