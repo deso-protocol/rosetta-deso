@@ -164,6 +164,10 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				// Add inputs for accept nft bid
 				acceptNftOps := node.getAcceptNFTOps(txn, txnMeta, len(transaction.Operations))
 				transaction.Operations = append(transaction.Operations, acceptNftOps...)
+
+				// Add inputs for update profile
+				updateProfileOps := node.getUpdateProfileOps(txn, txnMeta, len(transaction.Operations))
+				transaction.Operations = append(transaction.Operations, updateProfileOps...)
 			}
 		}
 
@@ -387,6 +391,49 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 	return operations
 }
 
+func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeUpdateProfile {
+		return nil
+	}
+
+	var operations []*types.Operation
+	var amount *types.Amount
+
+	for _, utxoOp := range meta.BasicTransferTxindexMetadata.UtxoOps {
+		if utxoOp.Type == lib.OperationTypeUpdateProfile {
+			if utxoOp.ClobberedProfileBugDESOLockedNanos > 0 {
+				amount = &types.Amount{
+					Value:    strconv.FormatInt(int64(utxoOp.ClobberedProfileBugDESOLockedNanos)*-1, 10),
+					Currency: &Currency,
+				}
+			}
+			break
+		}
+	}
+
+	if amount == nil {
+		return nil
+	}
+
+	// Add an input representing the clobbered nanos
+	operations = append(operations, &types.Operation{
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: int64(numOps),
+		},
+		Type:   InputOpType,
+		Status: &SuccessStatus,
+		Account: &types.AccountIdentifier{
+			Address: lib.Base58CheckEncode(txn.PublicKey, false, node.Params),
+			SubAccount: &types.SubAccountIdentifier{
+				Address: CreatorCoin,
+			},
+		},
+		Amount: amount,
+	})
+
+	return operations
+}
+
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
@@ -432,10 +479,6 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, meta *lib.TransactionM
 
 func (node *Node) getInputAmount(input *lib.DeSoInput) *types.Amount {
 	amount := types.Amount{}
-
-	if node.TXIndex == nil {
-		return nil
-	}
 
 	// Temporary fix for returning input amounts for genesis block transactions
 	// This will be removed once most node operators have regenerated their txindex
