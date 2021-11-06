@@ -33,10 +33,12 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	}
 
 	// Save a locked creator coins snapshot
-	var lockedBalances map[lib.PublicKey]uint64
-	for _, profile := range event.UtxoView.ProfilePKIDToProfileEntry {
+	profileEntries := event.UtxoView.ProfilePKIDToProfileEntry
+	lockedBalances := make(map[lib.PublicKey]uint64, len(profileEntries))
+	for _, profile := range profileEntries {
 		lockedBalances[*lib.NewPublicKey(profile.PublicKey)] = profile.DeSoLockedNanos
 	}
+
 	err = node.Index.PutLockedBalanceSnapshot(event.Block, lockedBalances)
 	if err != nil {
 		glog.Errorf("PutLockedBalanceSnapshot: %v", err)
