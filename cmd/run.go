@@ -41,7 +41,7 @@ to quickly create a Cobra application.`,
 
 		asserter, err := asserter.NewServer(
 			deso.OperationTypes,
-			false,
+			true,
 			[]*types.NetworkIdentifier{config.Network},
 			nil,
 			false,

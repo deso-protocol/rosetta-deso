@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"path/filepath"
 	"time"
 
 	"github.com/btcsuite/btcd/addrmgr"
@@ -136,10 +137,12 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 
 type Node struct {
 	*lib.Server
-	Params  *lib.DeSoParams
-	TXIndex *lib.TXIndex
-	Online  bool
-	Config  *Config
+	Params       *lib.DeSoParams
+	TXIndex      *lib.TXIndex
+	EventManager *lib.EventManager
+	Index        *Index
+	Online       bool
+	Config       *Config
 }
 
 func NewNode(config *Config) *Node {
@@ -190,6 +193,19 @@ func (node *Node) Start() {
 		connectIPAddrs = append(connectIPAddrs, "deso-seed-4.io")
 	}
 
+	// Setup rosetta index
+	rosettaIndexDir := filepath.Join(node.Config.DataDirectory, "index")
+	rosettaIndexOpts := badger.DefaultOptions(rosettaIndexDir)
+	rosettaIndexOpts.ValueDir = rosettaIndexDir
+	rosettaIndexOpts.MemTableSize = 1024 << 20
+	rosettaIndex, err := badger.Open(rosettaIndexOpts)
+	node.Index = NewIndex(rosettaIndex)
+
+	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
+	node.EventManager = lib.NewEventManager()
+	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
+	node.EventManager.OnBlockConnected(node.handleBlockConnected)
+
 	minerCount := uint64(1)
 	maxBlockTemplatesToCache := uint64(100)
 	minBlockUpdateInterval := uint64(10)
@@ -230,6 +246,7 @@ func (node *Node) Start() {
 		"",
 		[]string{},
 		0,
+		node.EventManager,
 	)
 	if err != nil {
 		panic(err)

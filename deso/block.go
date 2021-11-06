@@ -68,6 +68,9 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 	transactions := []*types.Transaction{}
 
+	// Fetch spent utxos map
+	spentUtxos, _ := node.Index.GetSpentUtxos(block)
+
 	for _, txn := range block.Txns {
 		metadataJSON, _ := json.Marshal(txn.TxnMeta)
 
@@ -85,8 +88,16 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		for _, input := range txn.TxInputs {
 			networkIndex := int64(input.Index)
 
-			// Fetch the input amount from TXIndex
-			amount := node.getInputAmount(input)
+			// Fetch the input amount from Rosetta Index
+			spentAmount := spentUtxos[lib.UtxoKey{
+				TxID:  input.TxID,
+				Index: input.Index,
+			}]
+
+			amount := &types.Amount{
+				Value:    strconv.FormatInt(int64(spentAmount)*-1, 10),
+				Currency: &Currency,
+			}
 
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{

@@ -94,8 +94,9 @@ func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.N
 					Successful: false,
 				},
 			},
-			OperationTypes: deso.OperationTypes,
-			Errors:         Errors,
+			OperationTypes:          deso.OperationTypes,
+			Errors:                  Errors,
+			HistoricalBalanceLookup: true,
 		},
 	}, nil
 }
