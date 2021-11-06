@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/deso-protocol/rosetta-deso/deso"
-	"github.com/golang/glog"
 	"strconv"
 
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -33,10 +32,7 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, ErrUnavailableOffline
 	}
 
-	blockchain := s.node.GetBlockchain()
-	currentBlock := blockchain.BlockTip()
-
-	glog.Info("Here")
+	currentBlock := s.node.GetBlockchain().BlockTip()
 
 	if request.BlockIdentifier == nil ||
 		(request.BlockIdentifier.Hash != nil && *request.BlockIdentifier.Hash == currentBlock.Hash.String()) ||
@@ -145,7 +141,6 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		if err != nil {
 			return nil, wrapErr(ErrDeSo, err)
 		}
-		glog.Info(balances)
 
 		balance = balances[*publicKey]
 	} else if account.SubAccount.Address == deso.CreatorCoin {

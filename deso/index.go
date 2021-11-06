@@ -10,10 +10,11 @@ import (
 const (
 	PrefixSpentUtxos = byte(0)
 
+	// Public key balances
 	PrefixBalanceSnapshots = byte(1)
 
 	// Creator coins
-	PrefixLockedBalanceSnapshots = byte(1)
+	PrefixLockedBalanceSnapshots = byte(2)
 )
 
 type Index struct {

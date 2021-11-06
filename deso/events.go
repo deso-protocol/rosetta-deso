@@ -6,8 +6,6 @@ import (
 )
 
 func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
-	glog.Info("handleBlockConnected: %s", event.Block.String())
-
 	var spentUtxos map[lib.UtxoKey]uint64
 
 	// Find all spent UTXOs for this block
