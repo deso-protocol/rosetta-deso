@@ -1,6 +1,7 @@
 package deso
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net"
@@ -48,6 +49,8 @@ func getAddrsToListenOn(protocolPort int) ([]net.TCPAddr, []net.Listener) {
 
 			listeners = append(listeners, listener)
 			listeningAddrs = append(listeningAddrs, netAddr)
+
+			glog.Infof("Listening for connections on %s", netAddr.String())
 		}
 	}
 
@@ -155,6 +158,10 @@ func NewNode(config *Config) *Node {
 }
 
 func (node *Node) Start() {
+	// TODO: Replace glog with logrus so we can also get rid of flag library
+	flag.Parse()
+	glog.Init()
+
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
 	}
@@ -188,9 +195,9 @@ func (node *Node) Start() {
 
 	// Note: This is one of many seeds. We specify it explicitly for convenience,
 	// but not specifying it would make the code run just the same.
-	connectIPAddrs := []string{}
-	if node.Params.NetworkType == lib.NetworkType_MAINNET {
-		connectIPAddrs = append(connectIPAddrs, "deso-seed-4.io")
+	connectIPs := node.Config.ConnectIPs
+	if len(connectIPs) == 0 && node.Params.NetworkType == lib.NetworkType_MAINNET {
+		connectIPs = append(connectIPs, "deso-seed-4.io")
 	}
 
 	// Setup rosetta index
@@ -222,7 +229,7 @@ func (node *Node) Start() {
 		node.Config.Params,
 		listeners,
 		desoAddrMgr,
-		connectIPAddrs,
+		connectIPs,
 		db,
 		nil,
 		targetOutboundPeers,

@@ -78,6 +78,7 @@ func init() {
 	runCmd.PersistentFlags().StringSlice("miner-public-keys", []string{}, "a list of public keys for testnet mining")
 	runCmd.PersistentFlags().Bool("txindex", false, "transaction index provides amount values for inputs")
 	runCmd.PersistentFlags().Bool("regtest", false, "don't connect to dorsey testnet, mine and spend blocks instantly")
+	runCmd.PersistentFlags().StringSlice("connect-ips", []string{}, "list of addresses to only connect to")
 
 	runCmd.PersistentFlags().VisitAll(func(flag *pflag.Flag) {
 		viper.BindPFlag(flag.Name, flag)

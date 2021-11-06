@@ -21,6 +21,7 @@ type Config struct {
 	MinerPublicKeys        []string
 	TXIndex                bool
 	Regtest                bool
+	ConnectIPs             []string
 }
 
 func LoadConfig() (*Config, error) {
@@ -59,6 +60,7 @@ func LoadConfig() (*Config, error) {
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
 	result.TXIndex = viper.GetBool("txindex")
 	result.Regtest = viper.GetBool("regtest")
+	result.ConnectIPs = viper.GetStringSlice("connect-ips")
 
 	return &result, nil
 }
