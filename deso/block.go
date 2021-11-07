@@ -68,7 +68,23 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 	transactions := []*types.Transaction{}
 
-	for _, txn := range block.Txns {
+	// Fetch the Utxo ops for this block
+	utxoOpsForBlock, _ := node.Index.GetUtxoOps(block)
+
+	// TODO: Can we be smarter about this size somehow?
+	// 2x number of transactions feels like a good enough proxy for now
+	spentUtxos := make(map[lib.UtxoKey]uint64, 2*len(utxoOpsForBlock))
+
+	// Find all spent UTXOs for this block
+	for _, utxoOps := range utxoOpsForBlock {
+		for _, utxoOp := range utxoOps {
+			if utxoOp.Type == lib.OperationTypeSpendUtxo {
+				spentUtxos[*utxoOp.Entry.UtxoKey] = utxoOp.Entry.AmountNanos
+			}
+		}
+	}
+
+	for txnIndexInBlock, txn := range block.Txns {
 		metadataJSON, _ := json.Marshal(txn.TxnMeta)
 
 		var metadata map[string]interface{}
@@ -85,8 +101,19 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		for _, input := range txn.TxInputs {
 			networkIndex := int64(input.Index)
 
-			// Fetch the input amount from TXIndex
-			amount := node.getInputAmount(input)
+			// Fetch the input amount from Rosetta Index
+			spentAmount, amountExists := spentUtxos[lib.UtxoKey{
+				TxID:  input.TxID,
+				Index: input.Index,
+			}]
+			if !amountExists {
+				fmt.Printf("Error: input missing for txn %v index %v\n", lib.PkToStringBoth(input.TxID[:]), input.Index)
+			}
+
+			amount := &types.Amount{
+				Value:    strconv.FormatInt(int64(spentAmount)*-1, 10),
+				Currency: &Currency,
+			}
 
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
@@ -146,29 +173,29 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			transaction.Operations = append(transaction.Operations, op)
 		}
 
-		if node.TXIndex != nil {
-			txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), txn.Hash())
-			if txnMeta != nil {
-				// Add implicit outputs from TXIndex
-				implicitOutputs := node.getImplicitOutputs(txn, txnMeta, len(transaction.Operations))
-				transaction.Operations = append(transaction.Operations, implicitOutputs...)
+		// Add all the special ops for specific txn types.
+		if len(utxoOpsForBlock) > 0 {
+			utxoOpsForTxn := utxoOpsForBlock[txnIndexInBlock]
 
-				// Add inputs/outputs for creator coins
-				creatorCoinOps := node.getCreatorCoinOps(txn, txnMeta, len(transaction.Operations))
-				transaction.Operations = append(transaction.Operations, creatorCoinOps...)
+			// Add implicit outputs from UtxoOps
+			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(transaction.Operations))
+			transaction.Operations = append(transaction.Operations, implicitOutputs...)
 
-				// Add inputs/outputs for swap identity
-				swapIdentityOps := node.getSwapIdentityOps(txnMeta, len(transaction.Operations))
-				transaction.Operations = append(transaction.Operations, swapIdentityOps...)
+			// Add inputs/outputs for creator coins
+			creatorCoinOps := node.getCreatorCoinOps(txn, utxoOpsForTxn, len(transaction.Operations))
+			transaction.Operations = append(transaction.Operations, creatorCoinOps...)
 
-				// Add inputs for accept nft bid
-				acceptNftOps := node.getAcceptNFTOps(txn, txnMeta, len(transaction.Operations))
-				transaction.Operations = append(transaction.Operations, acceptNftOps...)
+			// Add inputs/outputs for swap identity
+			swapIdentityOps := node.getSwapIdentityOps(txn, utxoOpsForTxn, len(transaction.Operations))
+			transaction.Operations = append(transaction.Operations, swapIdentityOps...)
 
-				// Add inputs for update profile
-				updateProfileOps := node.getUpdateProfileOps(txn, txnMeta, len(transaction.Operations))
-				transaction.Operations = append(transaction.Operations, updateProfileOps...)
-			}
+			// Add inputs for accept nft bid
+			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(transaction.Operations))
+			transaction.Operations = append(transaction.Operations, acceptNftOps...)
+
+			// Add inputs for update profile
+			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(transaction.Operations))
+			transaction.Operations = append(transaction.Operations, updateProfileOps...)
 		}
 
 		transactions = append(transactions, transaction)
@@ -182,21 +209,31 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	}
 }
 
-func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
-	creatorCoinMeta := meta.CreatorCoinTxindexMetadata
-	if creatorCoinMeta == nil {
+func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	// If we're not dealing with a CreatorCoin txn then we don't have any creator
+	// coin ops to add.
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeCreatorCoin {
 		return nil
 	}
+	// We extract the metadata and assume that we're dealing with a creator coin txn.
+	txnMeta := txn.TxnMeta.(*lib.CreatorCoinMetadataa)
 
 	var operations []*types.Operation
 
 	// Extract creator public key
-	var creatorPublicKey string
-	for _, key := range meta.AffectedPublicKeys {
-		if key.Metadata == "CreatorPublicKey" {
-			creatorPublicKey = key.PublicKeyBase58Check
+	creatorPublicKey := lib.PkToString(txnMeta.ProfilePublicKey, node.Params)
+
+	// Extract the CreatorCoinOperation from tne UtxoOperations passed in
+	var creatorCoinOp *lib.UtxoOperation
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeCreatorCoin {
+			creatorCoinOp = utxoOp
 			break
 		}
+	}
+	if creatorCoinOp == nil {
+		fmt.Printf("Error: Missing UtxoOperation for CreaotrCoin txn: %v\n", txn.Hash())
+		return nil
 	}
 
 	account := &types.AccountIdentifier{
@@ -208,12 +245,11 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMe
 
 	// This amount is negative for sells and positive for buys
 	amount := &types.Amount{
-		Value:    strconv.FormatInt(creatorCoinMeta.DESOLockedNanosDiff, 10),
+		Value:    strconv.FormatInt(creatorCoinOp.CreatorCoinDESOLockedNanosDiff, 10),
 		Currency: &Currency,
 	}
 
-	realTxnMeta := txn.TxnMeta.(*lib.CreatorCoinMetadataa)
-	if realTxnMeta.OperationType == lib.CreatorCoinOperationTypeSell {
+	if txnMeta.OperationType == lib.CreatorCoinOperationTypeSell {
 		// Selling a creator coin uses the creator coin as input
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
@@ -224,7 +260,7 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMe
 			Account: account,
 			Amount:  amount,
 		})
-	} else if realTxnMeta.OperationType == lib.CreatorCoinOperationTypeBuy {
+	} else if txnMeta.OperationType == lib.CreatorCoinOperationTypeBuy {
 		// Buying the creator coin generates an output for the creator coin
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
@@ -240,29 +276,43 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMe
 	return operations
 }
 
-func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) []*types.Operation {
-	swapMeta := meta.SwapIdentityTxindexMetadata
-	if swapMeta == nil {
+func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	// We only deal with SwapIdentity txns in this function
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeSwapIdentity {
+		return nil
+	}
+	realTxMeta := txn.TxnMeta.(*lib.SwapIdentityMetadataa)
+
+	// Extract the SwapIdentity op
+	var swapIdentityOp *lib.UtxoOperation
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeSwapIdentity {
+			swapIdentityOp = utxoOp
+			break
+		}
+	}
+	if swapIdentityOp == nil {
+		fmt.Printf("Error: Missing UtxoOperation for SwapIdentity txn: %v\n", txn.Hash())
 		return nil
 	}
 
 	var operations []*types.Operation
 
 	fromAccount := &types.AccountIdentifier{
-		Address: swapMeta.FromPublicKeyBase58Check,
+		Address: lib.PkToString(realTxMeta.FromPublicKey, node.Params),
 		SubAccount: &types.SubAccountIdentifier{
 			Address: CreatorCoin,
 		},
 	}
 
 	toAccount := &types.AccountIdentifier{
-		Address: swapMeta.ToPublicKeyBase58Check,
+		Address: lib.PkToString(realTxMeta.ToPublicKey, node.Params),
 		SubAccount: &types.SubAccountIdentifier{
 			Address: CreatorCoin,
 		},
 	}
 
-	// TXIndex creates metadata after a transaction has been connected. ToDeSoLockedNanos and FromDeSoLockedNanos
+	// ToDeSoLockedNanos and FromDeSoLockedNanos
 	// are the total DESO locked for the respective accounts after the swap has occurred.
 
 	// We subtract the now-swaped amounts from the opposite accounts
@@ -274,7 +324,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		Status:  &SuccessStatus,
 		Account: fromAccount,
 		Amount: &types.Amount{
-			Value:    strconv.FormatInt(int64(swapMeta.ToDeSoLockedNanos)*-1, 10),
+			Value:    strconv.FormatInt(int64(swapIdentityOp.SwapIdentityFromDESOLockedNanos)*-1, 10),
 			Currency: &Currency,
 		},
 	})
@@ -287,7 +337,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		Status:  &SuccessStatus,
 		Account: toAccount,
 		Amount: &types.Amount{
-			Value:    strconv.FormatInt(int64(swapMeta.FromDeSoLockedNanos)*-1, 10),
+			Value:    strconv.FormatInt(int64(swapIdentityOp.SwapIdentityToDESOLockedNanos)*-1, 10),
 			Currency: &Currency,
 		},
 	})
@@ -301,7 +351,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		Status:  &SuccessStatus,
 		Account: fromAccount,
 		Amount: &types.Amount{
-			Value:    strconv.FormatUint(swapMeta.FromDeSoLockedNanos, 10),
+			Value:    strconv.FormatUint(swapIdentityOp.SwapIdentityToDESOLockedNanos, 10),
 			Currency: &Currency,
 		},
 	})
@@ -314,7 +364,7 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 		Status:  &SuccessStatus,
 		Account: toAccount,
 		Amount: &types.Amount{
-			Value:    strconv.FormatUint(swapMeta.ToDeSoLockedNanos, 10),
+			Value:    strconv.FormatUint(swapIdentityOp.SwapIdentityFromDESOLockedNanos, 10),
 			Currency: &Currency,
 		},
 	})
@@ -322,35 +372,53 @@ func (node *Node) getSwapIdentityOps(meta *lib.TransactionMetadata, numOps int) 
 	return operations
 }
 
-func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
-	nftMeta := meta.AcceptNFTBidTxindexMetadata
-	if nftMeta == nil {
+func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeAcceptNFTBid {
 		return nil
 	}
+	realTxnMeta := txn.TxnMeta.(*lib.AcceptNFTBidMetadata)
+
+	// Extract the AcceptNFTBid op
+	var acceptNFTOp *lib.UtxoOperation
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeAcceptNFTBid {
+			acceptNFTOp = utxoOp
+			break
+		}
+	}
+	if acceptNFTOp == nil {
+		fmt.Printf("Error: Missing UtxoOperation for AcceptNFTBid txn: %v\n", txn.Hash())
+		return nil
+	}
+
 
 	var operations []*types.Operation
 
 	royaltyAccount := &types.AccountIdentifier{
-		Address: nftMeta.CreatorPublicKeyBase58Check,
+		Address: lib.PkToString(acceptNFTOp.AcceptNFTBidCreatorPublicKey, node.Params),
 		SubAccount: &types.SubAccountIdentifier{
 			Address: CreatorCoin,
 		},
 	}
 
-	// Extract bidder key
-	var bidderPublicKey string
-	for _, pubKey := range meta.AffectedPublicKeys {
-		if pubKey.Metadata == "NFTBidderPublicKeyBase58Check" {
-			bidderPublicKey = pubKey.PublicKeyBase58Check
-			break
-		}
-	}
-
 	// Add an operation for each bidder input we consume
-	txnMeta := txn.TxnMeta.(*lib.AcceptNFTBidMetadata)
-	for _, input := range txnMeta.BidderInputs {
-		inputAmount := node.getInputAmount(input)
+	totalBidderInput := int64(0)
+	for _, input := range realTxnMeta.BidderInputs {
+		// TODO(performance): This function is a bit inefficient because it runs through *all*
+		// the UTXOOps every time.
+		inputAmount := node.getInputAmount(input, utxoOpsForTxn)
+		if inputAmount == nil {
+			fmt.Printf("Error: AcceptNFTBid input was null for input: %v", input)
+			return nil
+		}
 		networkIndex := int64(input.Index)
+		// Track the total amount the bidder had as input
+		currentInputValue, err := strconv.ParseInt(inputAmount.Value, 10, 64)
+		if err != nil {
+			fmt.Printf("Error: Could not parse input amount in AcceptNFTBid: %v\n", err)
+			return nil
+		}
+		totalBidderInput += currentInputValue
 
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
@@ -360,7 +428,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 			Type:   InputOpType,
 			Status: &SuccessStatus,
 			Account: &types.AccountIdentifier{
-				Address: bidderPublicKey,
+				Address: lib.PkToString(acceptNFTOp.AcceptNFTBidBidderPublicKey, node.Params),
 			},
 			Amount: inputAmount,
 			CoinChange: &types.CoinChange{
@@ -374,6 +442,9 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 		numOps += 1
 	}
 
+	// Note that the implicit bidder change output is covered by another
+	// function that adds implicit outputs automatically using the UtxoOperations
+
 	// Add an output representing the creator coin royalty
 	operations = append(operations, &types.Operation{
 		OperationIdentifier: &types.OperationIdentifier{
@@ -383,15 +454,16 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMeta
 		Status:  &SuccessStatus,
 		Account: royaltyAccount,
 		Amount: &types.Amount{
-			Value:    strconv.FormatUint(nftMeta.CreatorCoinRoyaltyNanos, 10),
+			Value:    strconv.FormatUint(acceptNFTOp.AcceptNFTBidCreatorRoyaltyNanos, 10),
 			Currency: &Currency,
 		},
 	})
+	numOps += 1
 
 	return operations
 }
 
-func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
+func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
 	if txn.TxnMeta.GetTxnType() != lib.TxnTypeUpdateProfile {
 		return nil
 	}
@@ -399,7 +471,7 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, meta *lib.Transaction
 	var operations []*types.Operation
 	var amount *types.Amount
 
-	for _, utxoOp := range meta.BasicTransferTxindexMetadata.UtxoOps {
+	for _, utxoOp := range utxoOpsForTxn {
 		if utxoOp.Type == lib.OperationTypeUpdateProfile {
 			if utxoOp.ClobberedProfileBugDESOLockedNanos > 0 {
 				amount = &types.Amount{
@@ -434,11 +506,11 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, meta *lib.Transaction
 	return operations
 }
 
-func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, meta *lib.TransactionMetadata, numOps int) []*types.Operation {
+func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
 
-	for _, utxoOp := range meta.BasicTransferTxindexMetadata.UtxoOps {
+	for _, utxoOp := range utxoOpsForTxn {
 		if utxoOp.Type == lib.OperationTypeAddUtxo &&
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
 			utxoOp.Entry.UtxoKey.Index >= numOutputs {
@@ -477,11 +549,11 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, meta *lib.TransactionM
 	return operations
 }
 
-func (node *Node) getInputAmount(input *lib.DeSoInput) *types.Amount {
+func (node *Node) getInputAmount(input *lib.DeSoInput, utxoOpsForTxn []*lib.UtxoOperation) *types.Amount {
 	amount := types.Amount{}
 
-	// Temporary fix for returning input amounts for genesis block transactions
-	// This will be removed once most node operators have regenerated their txindex
+	// Fix for returning input amounts for genesis block transactions
+	// This is needed because we don't generate UtxoOperations for the genesis
 	zeroBlockHash := lib.BlockHash{}
 	if input.TxID == zeroBlockHash {
 		output := node.Params.GenesisBlock.Txns[0].TxOutputs[input.Index]
@@ -490,15 +562,11 @@ func (node *Node) getInputAmount(input *lib.DeSoInput) *types.Amount {
 		return &amount
 	}
 
-	txnMeta := lib.DbGetTxindexTransactionRefByTxID(node.TXIndex.TXIndexChain.DB(), &input.TxID)
-	if txnMeta == nil {
-		return nil
-	}
-
 	// Iterate over the UtxoOperations created by the txn to find the one corresponding to the index specified.
-	for _, utxoOp := range txnMeta.BasicTransferTxindexMetadata.UtxoOps {
-		if utxoOp.Type == lib.OperationTypeAddUtxo &&
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeSpendUtxo &&
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
+			utxoOp.Entry.UtxoKey.TxID == input.TxID &&
 			utxoOp.Entry.UtxoKey.Index == input.Index {
 
 			amount.Value = strconv.FormatInt(int64(utxoOp.Entry.AmountNanos)*-1, 10)

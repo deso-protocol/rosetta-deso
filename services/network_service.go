@@ -46,18 +46,10 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 		Synced:       new(bool),
 	}
 
-	// If TXIndex is enabled we wait for it to process blocks
-	if s.node.TXIndex != nil {
-		blockchain := s.node.TXIndex.TXIndexChain
-		*syncStatus.CurrentIndex = int64(blockchain.BlockTip().Height)
-		*syncStatus.TargetIndex = int64(blockchain.HeaderTip().Height)
-		*syncStatus.Stage = blockchain.ChainState().String()
-	} else {
-		blockchain := s.node.GetBlockchain()
-		*syncStatus.CurrentIndex = int64(blockchain.BlockTip().Height)
-		*syncStatus.TargetIndex = int64(blockchain.HeaderTip().Height)
-		*syncStatus.Stage = blockchain.ChainState().String()
-	}
+	blockchain := s.node.GetBlockchain()
+	*syncStatus.CurrentIndex = int64(blockchain.BlockTip().Height)
+	*syncStatus.TargetIndex = int64(blockchain.HeaderTip().Height)
+	*syncStatus.Stage = blockchain.ChainState().String()
 
 	// Synced means we are fully synced OR we are only three blocks behind
 	isSyncing := *syncStatus.Stage == lib.SyncStateSyncingBlocks.String() || *syncStatus.Stage == lib.SyncStateNeedBlocksss.String()
@@ -94,8 +86,9 @@ func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.N
 					Successful: false,
 				},
 			},
-			OperationTypes: deso.OperationTypes,
-			Errors:         Errors,
+			OperationTypes:          deso.OperationTypes,
+			Errors:                  Errors,
+			HistoricalBalanceLookup: true,
 		},
 	}, nil
 }

@@ -19,8 +19,8 @@ type Config struct {
 	NodePort               int
 	DataDirectory          string
 	MinerPublicKeys        []string
-	TXIndex                bool
 	Regtest                bool
+	ConnectIPs             []string
 }
 
 func LoadConfig() (*Config, error) {
@@ -57,8 +57,8 @@ func LoadConfig() (*Config, error) {
 	result.Port = viper.GetInt("port")
 	result.NodePort = viper.GetInt("node-port")
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
-	result.TXIndex = viper.GetBool("txindex")
 	result.Regtest = viper.GetBool("regtest")
+	result.ConnectIPs = viper.GetStringSlice("connect-ips")
 
 	return &result, nil
 }

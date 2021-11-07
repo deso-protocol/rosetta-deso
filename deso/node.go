@@ -1,9 +1,11 @@
 package deso
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net"
+	"path/filepath"
 	"time"
 
 	"github.com/btcsuite/btcd/addrmgr"
@@ -47,6 +49,8 @@ func getAddrsToListenOn(protocolPort int) ([]net.TCPAddr, []net.Listener) {
 
 			listeners = append(listeners, listener)
 			listeningAddrs = append(listeningAddrs, netAddr)
+
+			glog.Infof("Listening for connections on %s", netAddr.String())
 		}
 	}
 
@@ -136,10 +140,11 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 
 type Node struct {
 	*lib.Server
-	Params  *lib.DeSoParams
-	TXIndex *lib.TXIndex
-	Online  bool
-	Config  *Config
+	Params       *lib.DeSoParams
+	EventManager *lib.EventManager
+	Index        *Index
+	Online       bool
+	Config       *Config
 }
 
 func NewNode(config *Config) *Node {
@@ -152,6 +157,10 @@ func NewNode(config *Config) *Node {
 }
 
 func (node *Node) Start() {
+	// TODO: Replace glog with logrus so we can also get rid of flag library
+	flag.Parse()
+	glog.Init()
+
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
 	}
@@ -185,10 +194,23 @@ func (node *Node) Start() {
 
 	// Note: This is one of many seeds. We specify it explicitly for convenience,
 	// but not specifying it would make the code run just the same.
-	connectIPAddrs := []string{}
-	if node.Params.NetworkType == lib.NetworkType_MAINNET {
-		connectIPAddrs = append(connectIPAddrs, "deso-seed-4.io")
+	connectIPs := node.Config.ConnectIPs
+	if len(connectIPs) == 0 && node.Params.NetworkType == lib.NetworkType_MAINNET {
+		connectIPs = append(connectIPs, "deso-seed-4.io")
 	}
+
+	// Setup rosetta index
+	rosettaIndexDir := filepath.Join(node.Config.DataDirectory, "index")
+	rosettaIndexOpts := badger.DefaultOptions(rosettaIndexDir)
+	rosettaIndexOpts.ValueDir = rosettaIndexDir
+	rosettaIndexOpts.MemTableSize = 1024 << 20
+	rosettaIndex, err := badger.Open(rosettaIndexOpts)
+	node.Index = NewIndex(rosettaIndex)
+
+	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
+	node.EventManager = lib.NewEventManager()
+	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
+	node.EventManager.OnBlockConnected(node.handleBlockConnected)
 
 	minerCount := uint64(1)
 	maxBlockTemplatesToCache := uint64(100)
@@ -206,7 +228,7 @@ func (node *Node) Start() {
 		node.Config.Params,
 		listeners,
 		desoAddrMgr,
-		connectIPAddrs,
+		connectIPs,
 		db,
 		nil,
 		targetOutboundPeers,
@@ -230,19 +252,11 @@ func (node *Node) Start() {
 		"",
 		[]string{},
 		0,
+		node.EventManager,
 	)
 	if err != nil {
 		panic(err)
 	}
 
 	node.Server.Start()
-
-	if node.Config.TXIndex {
-		node.TXIndex, err = lib.NewTXIndex(node.Server.GetBlockchain(), node.Config.Params, node.Config.DataDirectory)
-		if err != nil {
-			glog.Fatal(err)
-		}
-
-		node.TXIndex.Start()
-	}
 }
