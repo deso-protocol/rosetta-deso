@@ -141,7 +141,6 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 type Node struct {
 	*lib.Server
 	Params       *lib.DeSoParams
-	TXIndex      *lib.TXIndex
 	EventManager *lib.EventManager
 	Index        *Index
 	Online       bool
@@ -260,13 +259,4 @@ func (node *Node) Start() {
 	}
 
 	node.Server.Start()
-
-	if node.Config.TXIndex {
-		node.TXIndex, err = lib.NewTXIndex(node.Server.GetBlockchain(), node.Config.Params, node.Config.DataDirectory)
-		if err != nil {
-			glog.Fatal(err)
-		}
-
-		node.TXIndex.Start()
-	}
 }

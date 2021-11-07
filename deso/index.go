@@ -5,10 +5,12 @@ import (
 	"encoding/gob"
 	"github.com/deso-protocol/core/lib"
 	"github.com/dgraph-io/badger/v3"
+	"github.com/pkg/errors"
+	"math"
 )
 
 const (
-	PrefixSpentUtxos = byte(0)
+	PrefixUtxoOps = byte(0)
 
 	// Public key balances
 	PrefixBalanceSnapshots = byte(1)
@@ -28,157 +30,136 @@ func NewIndex(db *badger.DB) *Index {
 }
 
 //
-// Spent UTXOs
+// Utxo Operations
 //
 
-func (index *Index) spentUtxosKey(blockHash *lib.BlockHash) []byte {
-	prefix := append([]byte{}, PrefixSpentUtxos)
+func (index *Index) utxoOpsKey(blockHash *lib.BlockHash) []byte {
+	prefix := append([]byte{}, PrefixUtxoOps)
 	prefix = append(prefix, blockHash.ToBytes()...)
 	return prefix
 }
 
-func (index *Index) PutSpentUtxos(block *lib.MsgDeSoBlock, spentUtxos map[lib.UtxoKey]uint64) error {
+func (index *Index) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*lib.UtxoOperation) error {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return err
 	}
 
 	buf := bytes.NewBuffer([]byte{})
-	err = gob.NewEncoder(buf).Encode(spentUtxos)
+	err = gob.NewEncoder(buf).Encode(utxoOps)
 	if err != nil {
 		return err
 	}
 
 	return index.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(index.spentUtxosKey(blockHash), buf.Bytes())
+		return txn.Set(index.utxoOpsKey(blockHash), buf.Bytes())
 	})
 }
 
-func (index *Index) GetSpentUtxos(block *lib.MsgDeSoBlock) (map[lib.UtxoKey]uint64, error) {
+func (index *Index) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOperation, error) {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return nil, err
 	}
 
-	var spentUtxos map[lib.UtxoKey]uint64
+	var utxoOps [][]*lib.UtxoOperation
 
 	err = index.db.View(func(txn *badger.Txn) error {
-		spentUtxosItem, err := txn.Get(index.spentUtxosKey(blockHash))
+		utxoOpsItem, err := txn.Get(index.utxoOpsKey(blockHash))
 		if err != nil {
 			return err
 		}
 
-		return spentUtxosItem.Value(func(valBytes []byte) error {
-			return gob.NewDecoder(bytes.NewReader(valBytes)).Decode(&spentUtxos)
+		return utxoOpsItem.Value(func(valBytes []byte) error {
+			return gob.NewDecoder(bytes.NewReader(valBytes)).Decode(&utxoOps)
 		})
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return spentUtxos, nil
+	return utxoOps, nil
 }
 
 //
 // Balance Snapshots
 //
 
-func (index *Index) balanceSnapshotKey(blockHash *lib.BlockHash) []byte {
-	prefix := append([]byte{}, PrefixBalanceSnapshots)
-	prefix = append(prefix, blockHash.ToBytes()...)
+func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64, balance uint64) []byte {
+	startPrefix := PrefixBalanceSnapshots
+	if isLockedBalance {
+		startPrefix = PrefixLockedBalanceSnapshots
+	}
+
+	prefix := append([]byte{}, startPrefix)
+	prefix = append(prefix, publicKey[:]...)
+	prefix = append(prefix, lib.EncodeUint64(blockHeight)...)
+	prefix = append(prefix, lib.EncodeUint64(balance)...)
 	return prefix
 }
 
-func (index *Index) PutBalanceSnapshot(block *lib.MsgDeSoBlock, balances map[lib.PublicKey]uint64) error {
-	blockHash, err := block.Hash()
-	if err != nil {
-		return err
-	}
+func (index *Index) PutBalanceSnapshot(
+	block *lib.MsgDeSoBlock, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
 
-	buf := bytes.NewBuffer([]byte{})
-	err = gob.NewEncoder(buf).Encode(balances)
-	if err != nil {
-		return err
-	}
-
+	height := block.Header.Height
 	return index.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(index.balanceSnapshotKey(blockHash), buf.Bytes())
-	})
-}
-
-func (index *Index) GetBalanceSnapshot(block *lib.MsgDeSoBlock) (map[lib.PublicKey]uint64, error) {
-	blockHash, err := block.Hash()
-	if err != nil {
-		return nil, err
-	}
-
-	var balances map[lib.PublicKey]uint64
-
-	err = index.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(index.balanceSnapshotKey(blockHash))
-		if err != nil {
-			return err
+		for pk, bal := range balances {
+			if err := txn.Set(balanceSnapshotKey(isLockedBalance, &pk, height, bal), []byte{}); err != nil {
+				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: " +
+					"%v pub key: %v balance: %v", height, pk, bal)
+			}
 		}
-
-		return item.Value(func(valBytes []byte) error {
-			return gob.NewDecoder(bytes.NewReader(valBytes)).Decode(&balances)
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return balances, nil
-}
-
-//
-// Lobkec Balance Snapshots (Creator Coins)
-//
-
-func (index *Index) lockedBalanceSnapshotKey(blockHash *lib.BlockHash) []byte {
-	prefix := append([]byte{}, PrefixLockedBalanceSnapshots)
-	prefix = append(prefix, blockHash.ToBytes()...)
-	return prefix
-}
-
-func (index *Index) PutLockedBalanceSnapshot(block *lib.MsgDeSoBlock, lockedBalances map[lib.PublicKey]uint64) error {
-	blockHash, err := block.Hash()
-	if err != nil {
-		return err
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	err = gob.NewEncoder(buf).Encode(lockedBalances)
-	if err != nil {
-		return err
-	}
-
-	return index.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(index.lockedBalanceSnapshotKey(blockHash), buf.Bytes())
+		return nil
 	})
 }
 
-func (index *Index) GetLockedBalanceSnapshot(block *lib.MsgDeSoBlock) (map[lib.PublicKey]uint64, error) {
-	blockHash, err := block.Hash()
-	if err != nil {
-		return nil, err
+func GetBalanceForPublicKeyAtBlockHeightWithTxn(
+	txn *badger.Txn, isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64) uint64 {
+
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchValues = false
+
+	// Go in reverse order.
+	opts.Reverse = true
+
+	it := txn.NewIterator(opts)
+	defer it.Close()
+
+	// Since we iterate backwards, the prefix must be bigger than all possible
+	// values that could actually exist. This means the key we use the pubkey
+	// and block height with max balance.
+	maxPrefix := balanceSnapshotKey(isLockedBalance, publicKey, blockHeight, math.MaxUint64)
+	// We don't want to consider any keys that don't involve our public key. This
+	// will cause the iteration to stop if we don't have any values for our current
+	// public key.
+	// One byte for the prefix
+	validForPrefix := maxPrefix[:1+len(publicKey)]
+	var keyFound []byte
+	for it.Seek(maxPrefix); it.ValidForPrefix(validForPrefix); it.Next() {
+		item := it.Item()
+		keyFound = item.Key()
+		// Break after the first key we iterate over because we only
+		// want the first one.
+		break
+	}
+	// No key found means this user's balance has never appeared in a block.
+	if keyFound == nil {
+		return 0
 	}
 
-	var lockedBalances map[lib.PublicKey]uint64
+	// If we get here we found a valid key. Decode the balance from it
+	// and return it.
+	// One byte for the prefix
+	return lib.DecodeUint64(keyFound[1+len(publicKey)+len(lib.EncodeUint64(blockHeight)):])
+}
 
-	err = index.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(index.lockedBalanceSnapshotKey(blockHash))
-		if err != nil {
-			return err
-		}
-
-		return item.Value(func(valBytes []byte) error {
-			return gob.NewDecoder(bytes.NewReader(valBytes)).Decode(&lockedBalances)
-		})
+func (index *Index) GetBalanceSnapshot(isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64) (uint64) {
+	balanceFound := uint64(0)
+	index.db.View(func(txn *badger.Txn) error {
+		balanceFound = GetBalanceForPublicKeyAtBlockHeightWithTxn(
+			txn, isLockedBalance, publicKey, blockHeight)
+		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
 
-	return lockedBalances, nil
+	return balanceFound
 }

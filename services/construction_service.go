@@ -120,7 +120,7 @@ func constructTransaction(operations []*types.Operation) (*lib.MsgDeSoTxn, *type
 
 	for _, operation := range operations {
 		if operation.Type == deso.InputOpType {
-			txId, txIndex, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
+			txId, txnIndex, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
 			if err != nil {
 				return nil, nil, wrapErr(ErrInvalidCoin, err)
 			}
@@ -143,7 +143,7 @@ func constructTransaction(operations []*types.Operation) (*lib.MsgDeSoTxn, *type
 
 			desoTxn.TxInputs = append(desoTxn.TxInputs, &lib.DeSoInput{
 				TxID:  *txId,
-				Index: txIndex,
+				Index: txnIndex,
 			})
 		} else if operation.Type == deso.OutputOpType {
 			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)

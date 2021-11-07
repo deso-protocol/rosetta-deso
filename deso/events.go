@@ -6,28 +6,16 @@ import (
 )
 
 func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
-	// TODO: Can we be smarter about this size somehow?
-	// 2x number of transactions feels like a good enough proxy for now
-	spentUtxos := make(map[lib.UtxoKey]uint64, 2*len(event.UtxoOps))
-
-	// Find all spent UTXOs for this block
-	for _, utxoOps := range event.UtxoOps {
-		for _, utxoOp := range utxoOps {
-			if utxoOp.Type == lib.OperationTypeSpendUtxo {
-				spentUtxos[*utxoOp.Entry.UtxoKey] = utxoOp.Entry.AmountNanos
-			}
-		}
-	}
-
-	// Save the spent utxos
-	err := node.Index.PutSpentUtxos(event.Block, spentUtxos)
+	// Save the UTXOOps. These are used to compute all of the meta information
+	// that Rosetta needs.
+	err := node.Index.PutUtxoOps(event.Block, event.UtxoOps)
 	if err != nil {
 		glog.Errorf("PutSpentUtxos: %v", err)
 	}
 
 	// Save a balance snapshot
 	balances := event.UtxoView.PublicKeyToDeSoBalanceNanos
-	err = node.Index.PutBalanceSnapshot(event.Block, balances)
+	err = node.Index.PutBalanceSnapshot(event.Block, false, balances)
 	if err != nil {
 		glog.Errorf("PutBalanceSnapshot: %v", err)
 	}
@@ -39,7 +27,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		lockedBalances[*lib.NewPublicKey(profile.PublicKey)] = profile.DeSoLockedNanos
 	}
 
-	err = node.Index.PutLockedBalanceSnapshot(event.Block, lockedBalances)
+	err = node.Index.PutBalanceSnapshot(event.Block, true, lockedBalances)
 	if err != nil {
 		glog.Errorf("PutLockedBalanceSnapshot: %v", err)
 	}

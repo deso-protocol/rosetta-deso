@@ -137,23 +137,14 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	var balance uint64
 
 	if account.SubAccount == nil {
-		balances, err := node.Index.GetBalanceSnapshot(desoBlock)
-		if err != nil {
-			return nil, wrapErr(ErrDeSo, err)
-		}
-
-		balance = balances[*publicKey]
+		balance = node.Index.GetBalanceSnapshot(false, publicKey, desoBlock.Header.Height)
 	} else if account.SubAccount.Address == deso.CreatorCoin {
-		lockedBalances, err := node.Index.GetLockedBalanceSnapshot(desoBlock)
-		if err != nil {
-			return nil, wrapErr(ErrDeSo, err)
-		}
-
-		balance = lockedBalances[*publicKey]
+		balance = node.Index.GetBalanceSnapshot(true, publicKey, desoBlock.Header.Height)
 	}
 
 	blockHash, _ := desoBlock.Hash()
 
+	//fmt.Printf("height: %v, addr (cc): %v, bal: %v\n", desoBlock.Header.Height, lib.PkToStringTestnet(publicKeyBytes), balance)
 	return &types.AccountBalanceResponse{
 		BlockIdentifier: &types.BlockIdentifier{
 			Hash:  blockHash.String(),
