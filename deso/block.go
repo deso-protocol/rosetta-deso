@@ -445,20 +445,23 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 	// Note that the implicit bidder change output is covered by another
 	// function that adds implicit outputs automatically using the UtxoOperations
 
-	// Add an output representing the creator coin royalty
-	operations = append(operations, &types.Operation{
-		OperationIdentifier: &types.OperationIdentifier{
-			Index: int64(numOps),
-		},
-		Type:    OutputOpType,
-		Status:  &SuccessStatus,
-		Account: royaltyAccount,
-		Amount: &types.Amount{
-			Value:    strconv.FormatUint(acceptNFTOp.AcceptNFTBidCreatorRoyaltyNanos, 10),
-			Currency: &Currency,
-		},
-	})
-	numOps += 1
+	// Add an output representing the creator coin royalty only if there
+	// are enough creator coins in circulation
+	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos >= node.Params.CreatorCoinAutoSellThresholdNanos {
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: royaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(acceptNFTOp.AcceptNFTBidCreatorRoyaltyNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
 
 	return operations
 }
