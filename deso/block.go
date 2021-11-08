@@ -173,6 +173,10 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, acceptNftOps...)
 
+			// Add inputs for bids on Buy Now NFTs
+			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(transaction.Operations))
+			transaction.Operations = append(transaction.Operations, buyNowNftBidOps...)
+
 			// Add inputs for update profile
 			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, updateProfileOps...)
@@ -478,6 +482,64 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 			Account: royaltyAccount,
 			Amount: &types.Amount{
 				Value:    strconv.FormatUint(acceptNFTOp.AcceptNFTBidCreatorRoyaltyNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
+	return operations
+}
+
+func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeNFTBid {
+		return nil
+	}
+
+	// Extract the AcceptNFTBid op
+	var nftBidOp *lib.UtxoOperation
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeNFTBid {
+			nftBidOp = utxoOp
+			break
+		}
+	}
+	if nftBidOp == nil {
+		fmt.Printf("Error: Missing UtxoOperation for NFTBid txn: %v\n", txn.Hash())
+		return nil
+	}
+
+	// We only care about NFT bids that generate creator royalties. This only occurs for NFT bids on Buy Now NFTs.
+	// Only NFT bids on Buy Now NFTs will have Accept
+	if nftBidOp.NFTBidCreatorRoyaltyNanos == 0 {
+		return nil
+	}
+
+	var operations []*types.Operation
+
+	royaltyAccount := &types.AccountIdentifier{
+		Address: lib.PkToString(nftBidOp.NFTBidCreatorPublicKey, node.Params),
+		SubAccount: &types.SubAccountIdentifier{
+			Address: CreatorCoin,
+		},
+	}
+
+	// Add an output representing the creator coin royalty only if there
+	// are enough creator coins in circulation
+	//
+	// TODO: This if statement is needed temporarily to fix a bug whereby
+	// NFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
+	// was zero due to this check in consensus.
+	if nftBidOp.PrevCoinEntry.CoinsInCirculationNanos >= node.Params.CreatorCoinAutoSellThresholdNanos {
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: royaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(nftBidOp.NFTBidCreatorRoyaltyNanos, 10),
 				Currency: &Currency,
 			},
 		})
