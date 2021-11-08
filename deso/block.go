@@ -447,6 +447,10 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 
 	// Add an output representing the creator coin royalty only if there
 	// are enough creator coins in circulation
+	//
+	// TODO: This if statement is needed temporarily to fix a bug whereby
+	// AcceptNFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
+	// was zero due to this check in consensus.
 	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos >= node.Params.CreatorCoinAutoSellThresholdNanos {
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
