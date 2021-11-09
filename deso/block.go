@@ -496,7 +496,7 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 		return nil
 	}
 
-	// Extract the AcceptNFTBid op
+	// Extract the NFTBid op
 	var nftBidOp *lib.UtxoOperation
 	for _, utxoOp := range utxoOpsForTxn {
 		if utxoOp.Type == lib.OperationTypeNFTBid {
@@ -510,7 +510,9 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	}
 
 	// We only care about NFT bids that generate creator royalties. This only occurs for NFT bids on Buy Now NFTs.
-	// Only NFT bids on Buy Now NFTs will have Accept
+	// Only NFT bids on Buy Now NFTs will have NFTBidcreatorRoyaltyNanos > 0. Even in the case that an NFT is a buy now,
+	// it is possible that there are no royalties to the creator coin generated. In this situation, it is okay to exit
+	// early since there are not output to add.
 	if nftBidOp.NFTBidCreatorRoyaltyNanos == 0 {
 		return nil
 	}
