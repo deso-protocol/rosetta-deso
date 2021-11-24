@@ -127,13 +127,6 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 				Amount: amount,
 
-				CoinChange: &types.CoinChange{
-					CoinIdentifier: &types.CoinIdentifier{
-						Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), input.Index),
-					},
-					CoinAction: types.CoinSpent,
-				},
-
 				Status: &SuccessStatus,
 				Type:   InputOpType,
 			}
@@ -157,13 +150,6 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				Amount: &types.Amount{
 					Value:    strconv.FormatUint(output.AmountNanos, 10),
 					Currency: &Currency,
-				},
-
-				CoinChange: &types.CoinChange{
-					CoinIdentifier: &types.CoinIdentifier{
-						Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
-					},
-					CoinAction: types.CoinCreated,
 				},
 
 				Status: &SuccessStatus,
@@ -391,7 +377,6 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 		return nil
 	}
 
-
 	var operations []*types.Operation
 
 	royaltyAccount := &types.AccountIdentifier{
@@ -431,12 +416,6 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 				Address: lib.PkToString(acceptNFTOp.AcceptNFTBidBidderPublicKey, node.Params),
 			},
 			Amount: inputAmount,
-			CoinChange: &types.CoinChange{
-				CoinIdentifier: &types.CoinIdentifier{
-					Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), networkIndex),
-				},
-				CoinAction: types.CoinSpent,
-			},
 		})
 
 		numOps += 1
@@ -536,13 +515,6 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 				Amount: &types.Amount{
 					Value:    strconv.FormatUint(utxoOp.Entry.AmountNanos, 10),
 					Currency: &Currency,
-				},
-
-				CoinChange: &types.CoinChange{
-					CoinIdentifier: &types.CoinIdentifier{
-						Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
-					},
-					CoinAction: types.CoinCreated,
 				},
 
 				Status: &SuccessStatus,
