@@ -12,6 +12,11 @@ var (
 		ErrDeSo,
 		ErrUnableToParseIntermediateResult,
 		ErrUnableToGetCoins,
+		ErrBlockNotFound,
+		ErrMultipleSigners,
+		ErrInvalidPublicKey,
+		ErrInvalidCoin,
+		ErrInvalidTransaction,
 	}
 
 	ErrUnimplemented = &types.Error{
