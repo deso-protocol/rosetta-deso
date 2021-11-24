@@ -99,8 +99,6 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		transaction.Operations = []*types.Operation{}
 
 		for _, input := range txn.TxInputs {
-			networkIndex := int64(input.Index)
-
 			// Fetch the input amount from Rosetta Index
 			spentAmount, amountExists := spentUtxos[lib.UtxoKey{
 				TxID:  input.TxID,
@@ -117,8 +115,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index:        int64(len(transaction.Operations)),
-					NetworkIndex: &networkIndex,
+					Index: int64(len(transaction.Operations)),
 				},
 
 				Account: &types.AccountIdentifier{
@@ -134,13 +131,10 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			transaction.Operations = append(transaction.Operations, op)
 		}
 
-		for index, output := range txn.TxOutputs {
-			networkIndex := int64(index)
-
+		for _, output := range txn.TxOutputs {
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index:        int64(len(transaction.Operations)),
-					NetworkIndex: &networkIndex,
+					Index: int64(len(transaction.Operations)),
 				},
 
 				Account: &types.AccountIdentifier{
@@ -396,7 +390,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 			fmt.Printf("Error: AcceptNFTBid input was null for input: %v", input)
 			return nil
 		}
-		networkIndex := int64(input.Index)
+
 		// Track the total amount the bidder had as input
 		currentInputValue, err := strconv.ParseInt(inputAmount.Value, 10, 64)
 		if err != nil {
@@ -407,8 +401,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
-				Index:        int64(numOps),
-				NetworkIndex: &networkIndex,
+				Index: int64(numOps),
 			},
 			Type:   InputOpType,
 			Status: &SuccessStatus,
@@ -501,11 +494,9 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
 			utxoOp.Entry.UtxoKey.Index >= numOutputs {
 
-			networkIndex := int64(utxoOp.Entry.UtxoKey.Index)
 			operations = append(operations, &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index:        int64(numOps),
-					NetworkIndex: &networkIndex,
+					Index: int64(numOps),
 				},
 
 				Account: &types.AccountIdentifier{
