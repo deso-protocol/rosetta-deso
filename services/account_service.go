@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"strconv"
 
@@ -163,61 +162,5 @@ func (s *AccountAPIService) AccountCoins(
 	ctx context.Context,
 	request *types.AccountCoinsRequest,
 ) (*types.AccountCoinsResponse, *types.Error) {
-	if s.config.Mode != deso.Online {
-		return nil, ErrUnavailableOffline
-	}
-
-	blockchain := s.node.GetBlockchain()
-	currentBlock := blockchain.BlockTip()
-
-	publicKeyBytes, _, err := lib.Base58CheckDecode(request.AccountIdentifier.Address)
-	if err != nil {
-		return nil, wrapErr(ErrInvalidPublicKey, err)
-	}
-
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
-
-	utxoEntries, err := utxoView.GetUnspentUtxoEntrysForPublicKey(publicKeyBytes)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
-
-	coins := []*types.Coin{}
-
-	for _, utxoEntry := range utxoEntries {
-		confirmations := uint64(currentBlock.Height) - uint64(utxoEntry.BlockHeight) + 1
-
-		metadata, err := types.MarshalMap(&amountMetadata{
-			Confirmations: confirmations,
-		})
-		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-		}
-
-		coins = append(coins, &types.Coin{
-			CoinIdentifier: &types.CoinIdentifier{
-				Identifier: fmt.Sprintf("%v:%d", utxoEntry.UtxoKey.TxID.String(), utxoEntry.UtxoKey.Index),
-			},
-			Amount: &types.Amount{
-				Value:    strconv.FormatUint(utxoEntry.AmountNanos, 10),
-				Currency: s.config.Currency,
-				Metadata: metadata,
-			},
-		})
-	}
-
-	block := &types.BlockIdentifier{
-		Index: int64(currentBlock.Height),
-		Hash:  currentBlock.Hash.String(),
-	}
-
-	result := &types.AccountCoinsResponse{
-		BlockIdentifier: block,
-		Coins:           coins,
-	}
-
-	return result, nil
+	return nil, ErrUnimplemented
 }
