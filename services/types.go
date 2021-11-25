@@ -10,11 +10,12 @@ type preprocessOptions struct {
 type constructionMetadata struct {
 	FeePerKB uint64           `json:"fee_per_kb"`
 	UTXOs    []*lib.UtxoEntry `json:"utxos"`
+	Change   uint64           `json:"change"`
 }
 
 type transactionMetadata struct {
-	Transaction  string   `json:"transaction"`
-	InputAmounts []string `json:"input_amounts"`
+	Transaction  []byte   `json:"transaction"`
+	InputAmounts []uint64 `json:"input_amounts"`
 }
 
 type amountMetadata struct {
