@@ -15,7 +15,7 @@ type constructionMetadata struct {
 
 type transactionMetadata struct {
 	Transaction []byte `json:"transaction"`
-	InputAmount uint64 `json:"input_amount"`
+	InputAmount string `json:"input_amount"`
 }
 
 type amountMetadata struct {

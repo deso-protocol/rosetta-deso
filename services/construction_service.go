@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 	"strconv"
 
 	"github.com/btcsuite/btcd/btcec"
@@ -275,9 +275,15 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	var inputAmounts []uint64
-	for _, utxo := range metadata.UTXOs {
-		inputAmounts = append(inputAmounts, utxo.AmountNanos)
+	var inputAmount string
+	for _, operation := range request.Operations {
+		if operation.Type == deso.InputOpType {
+			if len(inputAmount) != 0 {
+				return nil, ErrMultipleInputs
+			}
+
+			inputAmount = operation.Amount.Value
+		}
 	}
 
 	desoTxn, signingAccount, txnErr := constructTransaction(request.Operations, metadata.UTXOs, metadata.Change)
@@ -386,42 +392,36 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	var operations []*types.Operation
-	var signer *types.AccountIdentifier
+	signer := &types.AccountIdentifier{
+		Address: lib.Base58CheckEncode(desoTxn.PublicKey, false, s.node.Params),
+	}
 
-	inputAmount := metadata.InputAmount
-	inputOp := &types.Operation{
-		Type: deso.InputOpType,
-		OperationIdentifier: &types.OperationIdentifier{
-			Index: 0,
-		},
-		Account: &types.AccountIdentifier{
-			Address: lib.Base58CheckEncode(desoTxn.PublicKey, false, s.node.Params),
-		},
-		Amount: &types.Amount{
-			Value:    inputAmount,
-			Currency: s.config.Currency,
+	operations := []*types.Operation{
+		{
+			Type: deso.InputOpType,
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: 0,
+			},
+			Account: signer,
+			Amount: &types.Amount{
+				Value:    metadata.InputAmount,
+				Currency: s.config.Currency,
+			},
 		},
 	}
 
-	for i, input := range desoTxn.TxInputs {
-		if request.Signed {
-			signer = op.Account
+	numOps := int64(1)
+	for _, output := range desoTxn.TxOutputs {
+		// Skip the change output
+		if reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
+			continue
 		}
 
-		// Can only have one signing account per transaction
-		if signer != nil && signer.Address != op.Account.Address {
-			return nil, ErrMultipleSigners
-		}
-	}
-
-	for i, output := range desoTxn.TxOutputs {
-		networkIndex := int64(i)
+		numOps += 1
 
 		op := &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
-				Index:        int64(len(desoTxn.TxInputs) + i),
-				NetworkIndex: &networkIndex,
+				Index: numOps,
 			},
 
 			Account: &types.AccountIdentifier{
@@ -433,21 +433,13 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 				Currency: &deso.Currency,
 			},
 
-			CoinChange: &types.CoinChange{
-				CoinIdentifier: &types.CoinIdentifier{
-					Identifier: fmt.Sprintf("%v:%d", desoTxn.Hash().String(), networkIndex),
-				},
-				CoinAction: types.CoinCreated,
-			},
-
-			//Status: &deso.SuccessStatus,
 			Type: deso.OutputOpType,
 		}
 
 		operations = append(operations, op)
 	}
 
-	if signer != nil {
+	if request.Signed {
 		return &types.ConstructionParseResponse{
 			Operations:               operations,
 			AccountIdentifierSigners: []*types.AccountIdentifier{signer},
