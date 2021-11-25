@@ -101,6 +101,7 @@ transfer(10){
          "suggested_fee":{{suggested_fee}}
        });
 
+       output_amount = {{recipient_amount}} - {{suggested_fee.value}};
        transfer.network = {{transfer_dry_run.network}};
        transfer.confirmation_depth = {{transfer_dry_run.confirmation_depth}};
        transfer.operations = [
@@ -114,7 +115,7 @@ transfer(10){
            "operation_identifier":{"index":1},
            "type":"OUTPUT",
            "account":{{recipient.account_identifier}},
-           "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
+           "amount":{"value":{{output_amount}},"currency":{{currency}}}
          }
        ];
      }
