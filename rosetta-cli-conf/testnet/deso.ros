@@ -46,31 +46,16 @@ transfer(10){
       "minimum_balance":{
         "value": {{reserved_amount}},
         "currency": {{currency}}
-      },
-      "require_coin": true
+      }
     });
 
-    // The amount we send to the recipient is a random value
-    // between the dust_amount and the value of the entire coin (minus
-    // the amount reserved for fee payment and covering the dust minimum
-    // of the change UTXO).
-    receivable_amount = {{sender.balance.value}} - {{send_buffer}};
+    // Send between dust_amount and 10 DESO
     recipient_amount = random_number({
       "minimum": {{dust_amount}},
-      "maximum": {{receivable_amount}}
+      "maximum": "10000000000"
     });
     print_message({
       "recipient_amount":{{recipient_amount}}
-    });
-
-    // The change amount is what we aren't sending to the recipient
-    // minus the maximum fee. Don't worry, we will adjust this
-    // amount to avoid overpaying the fee after the dry run
-    // completes.
-    raw_change_amount = {{sender.balance.value}} - {{recipient_amount}};
-    change_amount = {{raw_change_amount}} - {{max_fee_amount}};
-    print_message({
-      "change_amount":{{change_amount}}
     });
 
     // The last thing we need to do before creating the transaction
@@ -78,7 +63,6 @@ transfer(10){
     // is not equal to the sender.
     recipient = find_balance({
       "not_account_identifier":[{{sender.account_identifier}}],
-      "not_coins":[{{sender.coin}}],
       "minimum_balance":{
         "value": "0",
         "currency": {{currency}}
@@ -87,7 +71,8 @@ transfer(10){
       "create_probability": 50
     });
 
-    sender_amount = 0 - {{sender.balance.value}};
+    sender_amount = 0 - {{recipient_amount}};
+    sender_amount -= {{send_buffer}};
     transfer_dry_run.confirmation_depth = "1";
     transfer_dry_run.dry_run = true;
     transfer_dry_run.operations = [
@@ -95,20 +80,13 @@ transfer(10){
         "operation_identifier":{"index":0},
         "type":"INPUT",
         "account":{{sender.account_identifier}},
-        "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-        "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+        "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
       },
       {
         "operation_identifier":{"index":1},
         "type":"OUTPUT",
         "account":{{recipient.account_identifier}},
         "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
-      },
-      {
-        "operation_identifier":{"index":2},
-        "type":"OUTPUT",
-        "account":{{sender.account_identifier}},
-        "amount":{"value":{{change_amount}},"currency":{{currency}}}
       }
     ];
   },
@@ -119,10 +97,11 @@ transfer(10){
          "currency":{{currency}},
          "amounts":{{transfer_dry_run.suggested_fee}}
        });
+       print_message({
+         "suggested_fee":{{suggested_fee}}
+       });
 
-       // We can access the variables of other scenarios, so we don't
-       // need to recalculate raw_change_amount.
-       change_amount = {{raw_change_amount}} - {{suggested_fee.value}};
+       output_amount = {{recipient_amount}} - {{suggested_fee.value}};
        transfer.network = {{transfer_dry_run.network}};
        transfer.confirmation_depth = {{transfer_dry_run.confirmation_depth}};
        transfer.operations = [
@@ -130,20 +109,13 @@ transfer(10){
            "operation_identifier":{"index":0},
            "type":"INPUT",
            "account":{{sender.account_identifier}},
-           "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-           "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+           "amount":{"value":{{sender_amount}},"currency":{{currency}}}
          },
          {
            "operation_identifier":{"index":1},
            "type":"OUTPUT",
            "account":{{recipient.account_identifier}},
-           "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
-         },
-         {
-           "operation_identifier":{"index":2},
-           "type":"OUTPUT",
-           "account":{{sender.account_identifier}},
-           "amount":{"value":{{change_amount}},"currency":{{currency}}}
+           "amount":{"value":{{output_amount}},"currency":{{currency}}}
          }
        ];
      }
@@ -162,8 +134,7 @@ return_funds(10){
       "minimum_balance":{
         "value": {{reserved_amount}},
         "currency": {{currency}}
-      },
-      "require_coin": true
+      }
     });
 
     // We send the maximum amount available to the recipient. Don't worry
@@ -183,8 +154,7 @@ return_funds(10){
         "operation_identifier":{"index":0},
         "type":"INPUT",
         "account":{{sender.account_identifier}},
-        "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-        "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+        "amount":{"value":{{sender_amount}},"currency":{{currency}}}
       },
       {
         "operation_identifier":{"index":1},
@@ -216,8 +186,7 @@ return_funds(10){
         "operation_identifier":{"index":0},
         "type":"INPUT",
         "account":{{sender.account_identifier}},
-        "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-        "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+        "amount":{"value":{{sender_amount}},"currency":{{currency}}}
       },
       {
         "operation_identifier":{"index":1},
