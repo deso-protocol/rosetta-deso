@@ -16,16 +16,6 @@ import (
 	"strconv"
 )
 
-const (
-	BytesPerKb   = 1000
-	MaxDERSigLen = 74
-
-	// FeeByteBuffer adds a byte buffer to the length of the transaction when calculating the suggested fee.
-	// We need this buffer because the size of the transaction can increase by a few bytes after
-	// the preprocess step and before the combine step
-	FeeByteBuffer = 2
-)
-
 type ConstructionAPIService struct {
 	config *deso.Config
 	node   *deso.Node
@@ -71,6 +61,7 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 		}
 
 	}
+
 	// Exactly one public key is required, otherwise that's an error.
 	if len(inputPubKeysFoundMap) != 1 {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf(
@@ -140,6 +131,9 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		TxnMeta:   &lib.BasicTransferMetadata{},
 	}
 	_, _, _, fee, err := s.node.GetBlockchain().AddInputsAndChangeToTransaction(txnn, feePerKB, s.node.GetMempool())
+	if err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
 
 	desoTxnBytes, err := txnn.ToBytes(true)
 	if err != nil {
