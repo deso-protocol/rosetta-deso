@@ -3,9 +3,8 @@ package services
 import "github.com/deso-protocol/core/lib"
 
 type preprocessOptions struct {
-	// Estimated number of bytes the transaction can be with a signature and change address.
-	// Used to provide a suggested fee to clients
-	TransactionSizeEstimate uint64 `json:"transaction_size_estimate"`
+	// Used to provide a suggested fee to clients. Tells us how many UTXOs to select
+	InputAmount uint64 `json:"input_amount"`
 }
 
 type constructionMetadata struct {

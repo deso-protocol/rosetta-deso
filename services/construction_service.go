@@ -47,31 +47,29 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 }
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
-	desoTxn, _, txnErr := constructTransaction(request.Operations, nil)
-	if txnErr != nil {
-		return nil, txnErr
-	}
-
-	desoTxnBytes, err := desoTxn.ToBytes(true)
-	if err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
-	}
-
-	txnSize := uint64(len(desoTxnBytes) + MaxDERSigLen + FeeByteBuffer)
-
-	options, err := types.MarshalMap(&preprocessOptions{
-		TransactionSizeEstimate: txnSize,
-	})
-	if err != nil {
-		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-	}
-
 	var fromAccount *types.AccountIdentifier
+	var inputAmount uint64
 	for _, op := range request.Operations {
 		if op.Type == deso.InputOpType {
 			fromAccount = op.Account
+
+			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
+			if err != nil {
+				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			}
+
+			inputAmount = amount
 			break
 		}
+
+		// TODO: Error if multiple inputs
+	}
+
+	options, err := types.MarshalMap(&preprocessOptions{
+		InputAmount: inputAmount,
+	})
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
 	return &types.ConstructionPreprocessResponse{
@@ -124,6 +122,9 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
+	// TODO: Pick the UTXOs we need to use to cover options.inputAmount and return them in Metadata
+	// TODO: Calculate fee
+
 	suggestedFee := feePerKB * options.TransactionSizeEstimate / BytesPerKb
 
 	return &types.ConstructionMetadataResponse{
@@ -145,11 +146,11 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry)
 	}
 	var signingAccount *types.AccountIdentifier
 
-	spendAmount := int64(0)
+	spendAmount := uint64(0)
 
 	for _, operation := range operations {
 		if operation.Type == deso.InputOpType {
-			amount, err := strconv.ParseInt(operation.Amount.Value, 10, 64)
+			amount, err := strconv.ParseUint(operation.Amount.Value, 10, 64)
 			if err != nil {
 				return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
@@ -200,28 +201,25 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry)
 	}
 
 	// Do UTXO selection for inputs
-	totalInput := int64(0)
+
+	totalInput := uint64(0)
+	var usedUtxos []*lib.UtxoEntry
 	for _, utxoEntry := range utxos {
 		// As an optimization, don't worry about the fee until the total input has
 		// definitively exceeded the amount we want to spend. We do this because computing
 		// the fee each time we add an input would result in N^2 behavior.
 		maxAmountNeeded := spendAmount
 		if totalInput >= spendAmount {
-			maxAmountNeeded += _computeMaxTxFee(txCopyWithChangeOutput, minFeeRateNanosPerKB)
+			maxAmountNeeded += _computeMaxTxFee(desoTxn, deso.MinFeeRateNanosPerKB)
 		}
 
 		// If the amount of input we have isn't enough to cover our upper bound on
 		// the total amount we could need, add an input and continue.
 		if totalInput < maxAmountNeeded {
-			txCopyWithChangeOutput.TxInputs = append(txCopyWithChangeOutput.TxInputs, (*DeSoInput)(utxoEntry.UtxoKey))
-			utxoEntriesBeingUsed = append(utxoEntriesBeingUsed, utxoEntry)
+			desoTxn.TxInputs = append(desoTxn.TxInputs, (*lib.DeSoInput)(utxoEntry.UtxoKey))
+			usedUtxos = append(usedUtxos, utxoEntry)
 
 			amountToAdd := utxoEntry.AmountNanos
-			// For Bitcoin burns, we subtract a tiny amount of slippage to the amount we can
-			// spend. This makes reorderings more forgiving.
-			if utxoEntry.UtxoType == UtxoTypeBitcoinBurn {
-				amountToAdd = uint64(float64(amountToAdd) * .999)
-			}
 			totalInput += amountToAdd
 			continue
 		}
@@ -232,6 +230,30 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry)
 	}
 
 	return desoTxn, signingAccount, nil
+}
+
+func _computeMaxTxFee(_tx *lib.MsgDeSoTxn, minFeeRateNanosPerKB uint64) uint64 {
+	maxSizeBytes := _computeMaxTxSize(_tx)
+	return maxSizeBytes * minFeeRateNanosPerKB / 1000
+}
+
+func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) uint64 {
+	// Compute the size of the transaction without the signature.
+	txBytesNoSignature, _ := _tx.ToBytes(true /*preSignature*/)
+	// Return the size the transaction would be if the signature had its
+	// absolute maximum length.
+
+	// MaxDERSigLen is the maximum size that a DER signature can be.
+	//
+	// Note: I am pretty sure the true maximum is 71. But since this value is
+	// dependent on the size of R and S, and since it's generally used for
+	// safety purposes (e.g. ensuring that enough space has been allocated),
+	// it seems better to pad it a bit and stay on the safe side. You can see
+	// some discussion on getting to this number here:
+	// https://bitcoin.stackexchange.com/questions/77191/what-is-the-maximum-size-of-a-der-encoded-ecdsa-signature
+	const MaxDERSigLen = 74
+
+	return uint64(len(txBytesNoSignature)) + MaxDERSigLen
 }
 
 func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
