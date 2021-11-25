@@ -52,6 +52,10 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 	var inputAmount uint64
 	for _, op := range request.Operations {
 		if op.Type == deso.InputOpType {
+			if fromAccount != nil {
+				return nil, ErrMultipleInputs
+			}
+
 			fromAccount = op.Account
 
 			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
@@ -60,10 +64,7 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 			}
 
 			inputAmount = amount
-			break
 		}
-
-		// TODO: Error if multiple inputs
 	}
 
 	options, err := types.MarshalMap(&preprocessOptions{
@@ -292,8 +293,8 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 	unsignedBytes := merkletree.Sha256DoubleHash(desoTxnBytes)
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:  desoTxnBytes,
-		InputAmounts: inputAmounts,
+		Transaction: desoTxnBytes,
+		InputAmount: inputAmount,
 	})
 
 	return &types.ConstructionPayloadsResponse{
@@ -337,8 +338,8 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 	}
 
 	signedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:  signedTxnBytes,
-		InputAmounts: unsignedTxn.InputAmounts,
+		Transaction: signedTxnBytes,
+		InputAmount: unsignedTxn.InputAmount,
 	})
 
 	return &types.ConstructionCombineResponse{
@@ -375,50 +376,35 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	var txn transactionMetadata
-	if err := json.Unmarshal(txnBytes, &txn); err != nil {
+	var metadata transactionMetadata
+	if err := json.Unmarshal(txnBytes, &metadata); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	desoTxn := &lib.MsgDeSoTxn{}
-	if err = desoTxn.FromBytes(txn.Transaction); err != nil {
+	if err = desoTxn.FromBytes(metadata.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	var operations []*types.Operation
 	var signer *types.AccountIdentifier
 
+	inputAmount := metadata.InputAmount
+	inputOp := &types.Operation{
+		Type: deso.InputOpType,
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: 0,
+		},
+		Account: &types.AccountIdentifier{
+			Address: lib.Base58CheckEncode(desoTxn.PublicKey, false, s.node.Params),
+		},
+		Amount: &types.Amount{
+			Value:    inputAmount,
+			Currency: s.config.Currency,
+		},
+	}
+
 	for i, input := range desoTxn.TxInputs {
-		networkIndex := int64(input.Index)
-
-		op := &types.Operation{
-			OperationIdentifier: &types.OperationIdentifier{
-				Index:        int64(i),
-				NetworkIndex: &networkIndex,
-			},
-
-			Account: &types.AccountIdentifier{
-				Address: lib.Base58CheckEncode(desoTxn.PublicKey, false, s.node.Params),
-			},
-
-			CoinChange: &types.CoinChange{
-				CoinIdentifier: &types.CoinIdentifier{
-					Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), input.Index),
-				},
-				CoinAction: types.CoinSpent,
-			},
-
-			Amount: &types.Amount{
-				Value:    string(txn.InputAmounts[i]),
-				Currency: s.config.Currency,
-			},
-
-			//Status: &deso.SuccessStatus,
-			Type: deso.InputOpType,
-		}
-
-		operations = append(operations, op)
-
 		if request.Signed {
 			signer = op.Account
 		}
