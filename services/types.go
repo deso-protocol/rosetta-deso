@@ -1,15 +1,27 @@
 package services
 
+type desoOutput struct {
+	PublicKey   string
+	AmountNanos uint64
+}
+
 type preprocessOptions struct {
-	// Used to provide a suggested fee to clients. Tells us how many UTXOs to select
-	InputAmount uint64 `json:"input_amount"`
-	NumOutputs  uint64 `json:"num_outputs"`
+	// The from public key is used to gather UTXOs in the metadata portion. This
+	// obviates the need to rely on UTXOs in the Rosetta API, and supports a future
+	// shift away from UTXOs to balance model.
+	FromPublicKey string `json:"from_public_key"`
+
+	// The outputs are used to compute the fee estimate in the metadata portion.
+	DeSoOutputs []*desoOutput `json:"deso_outputs"`
 }
 
 type constructionMetadata struct {
-	FeePerKB uint64   `json:"fee_per_kb"`
-	Inputs   []string `json:"inputs"`
-	Change   uint64   `json:"change"`
+	FeePerKB uint64 `json:"fee_per_kb"`
+
+	// This transaction is used to estimate the fee in the metadata portion. The inputs
+	// on this transaction are also used in the offline portion in order to construct the
+	// final transaction.
+	DeSoSampleTxnHex string `json:"deso_sample_txn_hex"`
 }
 
 type transactionMetadata struct {

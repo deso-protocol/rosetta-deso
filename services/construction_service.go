@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"math"
-	"math/big"
-	"reflect"
-	"strconv"
-	"strings"
-
+	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/deso-protocol/core/lib"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	merkletree "github.com/laser/go-merkle-tree"
+	"math/big"
+	"reflect"
+	"strconv"
 )
 
 const (
@@ -49,43 +47,50 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 }
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
-	var fromAccount *types.AccountIdentifier
-	inputAmount := uint64(0)
-	numOutputs := uint64(0)
-
+	// Rack up the public keys from the inputs so that we can compute the
+	// corresponding metadata.
+	//
+	// Also compute the total input so that we can compute a suggested fee
+	// in the metadata portion.
+	optionsObj := &preprocessOptions{}
+	inputPubKeysFoundMap := make(map[string]bool)
 	for _, op := range request.Operations {
 		if op.Type == deso.InputOpType {
-			if fromAccount != nil {
-				return nil, ErrMultipleInputs
-			}
-
-			fromAccount = op.Account
-
-			// Chop off the negative sign
-			amount, err := strconv.ParseUint(op.Amount.Value[1:], 10, 64)
+			// Add the account identifier to our map
+			inputPubKeysFoundMap[op.Account.Address] = true
+		} else if op.Type == deso.OutputOpType {
+			// Parse the amount of this output
+			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
 			if err != nil {
 				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
-
-			inputAmount = amount
-		} else if op.Type == deso.OutputOpType {
-			numOutputs += 1
+			optionsObj.DeSoOutputs = append(optionsObj.DeSoOutputs, &desoOutput{
+				PublicKey:   op.Account.Address,
+				AmountNanos: amount,
+			})
 		}
+
+	}
+	// Exactly one public key is required, otherwise that's an error.
+	if len(inputPubKeysFoundMap) != 1 {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf(
+			"Exactly one input public key is required but instead found: %v",
+			inputPubKeysFoundMap))
 	}
 
-	options, err := types.MarshalMap(&preprocessOptions{
-		InputAmount: inputAmount,
-		NumOutputs:  numOutputs,
-	})
+	// Set the from public key on the options
+	for kk, _ := range inputPubKeysFoundMap {
+		optionsObj.FromPublicKey = kk
+		break
+	}
+
+	options, err := types.MarshalMap(optionsObj)
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
 	return &types.ConstructionPreprocessResponse{
 		Options: options,
-		RequiredPublicKeys: []*types.AccountIdentifier{
-			fromAccount,
-		},
 	}, nil
 }
 
@@ -105,30 +110,45 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		feePerKB = deso.MinFeeRateNanosPerKB
 	}
 
-	// Fetch all UTXOs we could spend
-	fromAccount := request.PublicKeys[0]
-
-	dbView, err := lib.NewUtxoView(s.node.GetBlockchain().DB(), s.node.Params, nil)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
-
-	utxoEntries, err := dbView.GetUnspentUtxoEntrysForPublicKey(fromAccount.Bytes)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
-
 	var options preprocessOptions
 	if err := types.UnmarshalMap(request.Options, &options); err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	inputs, fee, change := selectInputs(utxoEntries, options, feePerKB)
+	fullDeSoOutputs := []*lib.DeSoOutput{}
+	for _, output := range options.DeSoOutputs {
+		pkBytes, _, err := lib.Base58CheckDecode(output.PublicKey)
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
+		fullDeSoOutputs = append(fullDeSoOutputs, &lib.DeSoOutput{
+			PublicKey:   pkBytes,
+			AmountNanos: output.AmountNanos,
+		})
+	}
+
+	// Use the input amount to compute how many UTXOs will be needed
+	fromPubKeyBytes, _, err := lib.Base58CheckDecode(options.FromPublicKey)
+	if err != nil {
+		return nil, wrapErr(ErrDeSo, err)
+	}
+	txnn := &lib.MsgDeSoTxn{
+		// The inputs will be set below.
+		TxInputs:  []*lib.DeSoInput{},
+		TxOutputs: fullDeSoOutputs,
+		PublicKey: fromPubKeyBytes,
+		TxnMeta:   &lib.BasicTransferMetadata{},
+	}
+	_, _, _, fee, err := s.node.GetBlockchain().AddInputsAndChangeToTransaction(txnn, feePerKB, s.node.GetMempool())
+
+	desoTxnBytes, err := txnn.ToBytes(true)
+	if err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
 
 	metadata, err := types.MarshalMap(&constructionMetadata{
-		FeePerKB: feePerKB,
-		Inputs:   inputs,
-		Change:   change,
+		FeePerKB:         feePerKB,
+		DeSoSampleTxnHex: hex.EncodeToString(desoTxnBytes),
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -145,191 +165,38 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}, nil
 }
 
-func constructTransaction(operations []*types.Operation, inputs []string, change uint64) (*lib.MsgDeSoTxn, *types.AccountIdentifier, *types.Error) {
-	desoTxn := &lib.MsgDeSoTxn{
-		TxInputs:  []*lib.DeSoInput{},
-		TxOutputs: []*lib.DeSoOutput{},
-		TxnMeta:   &lib.BasicTransferMetadata{},
-	}
-	var signingAccount *types.AccountIdentifier
-
-	for _, operation := range operations {
-		if operation.Type == deso.InputOpType {
-			if signingAccount == nil {
-				signingAccount = operation.Account
-
-				publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
-				if err != nil {
-					return nil, nil, wrapErr(ErrInvalidPublicKey, err)
-				}
-
-				desoTxn.PublicKey = publicKeyBytes
-			}
-
-			// Can only have one signing account per transaction
-			if signingAccount.Address != operation.Account.Address {
-				return nil, nil, ErrMultipleSigners
-			}
-		} else if operation.Type == deso.OutputOpType {
-			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)
-			if err != nil {
-				return nil, nil, wrapErr(ErrInvalidPublicKey, err)
-			}
-
-			amount, err := types.AmountValue(operation.Amount)
-			if err != nil {
-				return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-			}
-
-			desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
-				PublicKey:   publicKeyBytes,
-				AmountNanos: amount.Uint64(),
-			})
-		}
-	}
-
-	for _, input := range inputs {
-		pieces := strings.Split(input, ":")
-
-		txId, err := hex.DecodeString(pieces[0])
-		if err != nil {
-			return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-		}
-
-		index, err := strconv.ParseUint(pieces[1], 10, 32)
-		if err != nil {
-			return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-		}
-
-		desoTxn.TxInputs = append(desoTxn.TxInputs, &lib.DeSoInput{
-			TxID:  *lib.NewBlockHash(txId),
-			Index: uint32(index),
-		})
-	}
-
-	desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
-		PublicKey:   desoTxn.PublicKey,
-		AmountNanos: change,
-	})
-
-	return desoTxn, signingAccount, nil
-}
-
-func selectInputs(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint64) ([]string, uint64, uint64) {
-	totalInput := uint64(0)
-	maxTxFee := uint64(0)
-
-	placeholderPublicKey := make([]byte, 33)
-
-	desoTxn := &lib.MsgDeSoTxn{
-		PublicKey: placeholderPublicKey,
-		TxInputs:  []*lib.DeSoInput{},
-		TxOutputs: []*lib.DeSoOutput{
-			// Placeholder for change output
-			{
-				PublicKey:   placeholderPublicKey,
-				AmountNanos: math.MaxUint64,
-			},
-		},
-		TxnMeta: &lib.BasicTransferMetadata{},
-	}
-
-	// Add placeholders for recipient outputs
-	for i := uint64(0); i < options.NumOutputs; i++ {
-		desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
-			PublicKey:   placeholderPublicKey,
-			AmountNanos: math.MaxUint64,
-		})
-	}
-
-	spendAmount := options.InputAmount
-	var inputs []string
-
-	for _, utxoEntry := range utxos {
-		// As an optimization, don't worry about the fee until the total input has
-		// definitively exceeded the amount we want to spend. We do this because computing
-		// the fee each time we add an input would result in N^2 behavior.
-		maxAmountNeeded := spendAmount
-		if totalInput >= spendAmount {
-			maxTxFee = _computeMaxTxFee(desoTxn, feeRate)
-			maxAmountNeeded += maxTxFee
-		}
-
-		// If the amount of input we have isn't enough to cover our upper bound on
-		// the total amount we could need, add an input and continue.
-		if totalInput < maxAmountNeeded {
-			inputs = append(inputs, utxoEntry.UtxoKey.Identifier())
-			desoTxn.TxInputs = append(desoTxn.TxInputs, (*lib.DeSoInput)(utxoEntry.UtxoKey))
-			totalInput += utxoEntry.AmountNanos
-			continue
-		}
-
-		// If we get here, we know we have enough input to cover the upper bound
-		// estimate of our amount needed so break.
-		break
-	}
-
-	change := totalInput - maxTxFee - spendAmount
-
-	return inputs, maxTxFee, change
-}
-
-func _computeMaxTxFee(_tx *lib.MsgDeSoTxn, minFeeRateNanosPerKB uint64) uint64 {
-	maxSizeBytes := _computeMaxTxSize(_tx)
-	return maxSizeBytes * minFeeRateNanosPerKB / 1000
-}
-
-func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) uint64 {
-	// Compute the size of the transaction without the signature.
-	txBytesNoSignature, _ := _tx.ToBytes(true /*preSignature*/)
-	// Return the size the transaction would be if the signature had its
-	// absolute maximum length.
-
-	// MaxDERSigLen is the maximum size that a DER signature can be.
-	//
-	// Note: I am pretty sure the true maximum is 71. But since this value is
-	// dependent on the size of R and S, and since it's generally used for
-	// safety purposes (e.g. ensuring that enough space has been allocated),
-	// it seems better to pad it a bit and stay on the safe side. You can see
-	// some discussion on getting to this number here:
-	// https://bitcoin.stackexchange.com/questions/77191/what-is-the-maximum-size-of-a-der-encoded-ecdsa-signature
-	const MaxDERSigLen = 74
-
-	return uint64(len(txBytesNoSignature) + MaxDERSigLen)
-}
-
 func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
 	var metadata constructionMetadata
 	if err := types.UnmarshalMap(request.Metadata, &metadata); err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	var inputAmount string
+	var inputAmounts []string
+	var signingAccount *types.AccountIdentifier
 	for _, operation := range request.Operations {
 		if operation.Type == deso.InputOpType {
-			if len(inputAmount) != 0 {
-				return nil, ErrMultipleInputs
-			}
-
-			inputAmount = operation.Amount.Value
+			inputAmounts = append(inputAmounts, operation.Amount.Value)
+			// Assigning multiple times is OK because all the inputs have
+			// been checked to have the same account at this point.
+			signingAccount = operation.Account
 		}
 	}
 
-	desoTxn, signingAccount, txnErr := constructTransaction(request.Operations, metadata.Inputs, metadata.Change)
-	if txnErr != nil {
-		return nil, txnErr
-	}
-
-	desoTxnBytes, err := desoTxn.ToBytes(true)
+	desoTxnBytes, err := hex.DecodeString(metadata.DeSoSampleTxnHex)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
+	// We should only have one input with the balance model
+	if len(inputAmounts) != 1 {
+		return nil, wrapErr(ErrInvalidTransaction, fmt.Errorf("Txn must have exactly one input but found %v", len(inputAmounts)))
 	}
 
 	unsignedBytes := merkletree.Sha256DoubleHash(desoTxnBytes)
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
 		Transaction: desoTxnBytes,
-		InputAmount: inputAmount,
+		InputAmount: inputAmounts[0],
 	})
 
 	return &types.ConstructionPayloadsResponse{
