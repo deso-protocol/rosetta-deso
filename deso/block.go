@@ -218,9 +218,6 @@ func squashOperations(ops []*types.Operation) []*types.Operation {
 		}
 	}
 
-	j, _ := json.Marshal(squashedOps)
-	fmt.Println(string(j))
-
 	return squashedOps
 }
 
