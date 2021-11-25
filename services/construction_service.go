@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -49,7 +50,7 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
 	var fromAccount *types.AccountIdentifier
-	inputAmount := int64(0)
+	inputAmount := uint64(0)
 	numOutputs := uint64(0)
 
 	for _, op := range request.Operations {
@@ -60,7 +61,8 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 
 			fromAccount = op.Account
 
-			amount, err := strconv.ParseInt(op.Amount.Value, 10, 64)
+			// Chop off the negative sign
+			amount, err := strconv.ParseUint(op.Amount.Value[1:], 10, 64)
 			if err != nil {
 				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
@@ -121,12 +123,12 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	utxos, fee, change := selectUtxos(utxoEntries, options, feePerKB)
+	inputs, fee, change := selectInputs(utxoEntries, options, feePerKB)
 
 	metadata, err := types.MarshalMap(&constructionMetadata{
 		FeePerKB: feePerKB,
-		UTXOs:    utxos,
-		Change:   uint64(change),
+		Inputs:   inputs,
+		Change:   change,
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -136,14 +138,14 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		Metadata: metadata,
 		SuggestedFee: []*types.Amount{
 			{
-				Value:    strconv.FormatInt(fee, 10),
+				Value:    strconv.FormatUint(fee, 10),
 				Currency: &deso.Currency,
 			},
 		},
 	}, nil
 }
 
-func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry, change uint64) (*lib.MsgDeSoTxn, *types.AccountIdentifier, *types.Error) {
+func constructTransaction(operations []*types.Operation, inputs []string, change uint64) (*lib.MsgDeSoTxn, *types.AccountIdentifier, *types.Error) {
 	desoTxn := &lib.MsgDeSoTxn{
 		TxInputs:  []*lib.DeSoInput{},
 		TxOutputs: []*lib.DeSoOutput{},
@@ -186,8 +188,23 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry,
 		}
 	}
 
-	for _, utxo := range utxos {
-		desoTxn.TxInputs = append(desoTxn.TxInputs, (*lib.DeSoInput)(utxo.UtxoKey))
+	for _, input := range inputs {
+		pieces := strings.Split(input, ":")
+
+		txId, err := hex.DecodeString(pieces[0])
+		if err != nil {
+			return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
+
+		index, err := strconv.ParseUint(pieces[1], 10, 32)
+		if err != nil {
+			return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
+
+		desoTxn.TxInputs = append(desoTxn.TxInputs, &lib.DeSoInput{
+			TxID:  *lib.NewBlockHash(txId),
+			Index: uint32(index),
+		})
 	}
 
 	desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
@@ -198,15 +215,19 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry,
 	return desoTxn, signingAccount, nil
 }
 
-func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint64) ([]*lib.UtxoEntry, int64, int64) {
-	totalInput := int64(0)
-	maxTxFee := int64(0)
+func selectInputs(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint64) ([]string, uint64, uint64) {
+	totalInput := uint64(0)
+	maxTxFee := uint64(0)
+
+	placeholderPublicKey := make([]byte, 33)
+
 	desoTxn := &lib.MsgDeSoTxn{
-		TxInputs: []*lib.DeSoInput{},
+		PublicKey: placeholderPublicKey,
+		TxInputs:  []*lib.DeSoInput{},
 		TxOutputs: []*lib.DeSoOutput{
 			// Placeholder for change output
 			{
-				PublicKey:   make([]byte, 33),
+				PublicKey:   placeholderPublicKey,
 				AmountNanos: math.MaxUint64,
 			},
 		},
@@ -216,13 +237,13 @@ func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint
 	// Add placeholders for recipient outputs
 	for i := uint64(0); i < options.NumOutputs; i++ {
 		desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
-			PublicKey:   make([]byte, 33),
+			PublicKey:   placeholderPublicKey,
 			AmountNanos: math.MaxUint64,
 		})
 	}
 
-	var selectedUtxos []*lib.UtxoEntry
 	spendAmount := options.InputAmount
+	var inputs []string
 
 	for _, utxoEntry := range utxos {
 		// As an optimization, don't worry about the fee until the total input has
@@ -238,9 +259,9 @@ func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint
 		// If the amount of input we have isn't enough to cover our upper bound on
 		// the total amount we could need, add an input and continue.
 		if totalInput < maxAmountNeeded {
+			inputs = append(inputs, utxoEntry.UtxoKey.Identifier())
 			desoTxn.TxInputs = append(desoTxn.TxInputs, (*lib.DeSoInput)(utxoEntry.UtxoKey))
-			selectedUtxos = append(selectedUtxos, utxoEntry)
-			totalInput += int64(utxoEntry.AmountNanos)
+			totalInput += utxoEntry.AmountNanos
 			continue
 		}
 
@@ -251,15 +272,15 @@ func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint
 
 	change := totalInput - maxTxFee - spendAmount
 
-	return selectedUtxos, maxTxFee, change
+	return inputs, maxTxFee, change
 }
 
-func _computeMaxTxFee(_tx *lib.MsgDeSoTxn, minFeeRateNanosPerKB uint64) int64 {
+func _computeMaxTxFee(_tx *lib.MsgDeSoTxn, minFeeRateNanosPerKB uint64) uint64 {
 	maxSizeBytes := _computeMaxTxSize(_tx)
-	return maxSizeBytes * int64(minFeeRateNanosPerKB) / 1000
+	return maxSizeBytes * minFeeRateNanosPerKB / 1000
 }
 
-func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) int64 {
+func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) uint64 {
 	// Compute the size of the transaction without the signature.
 	txBytesNoSignature, _ := _tx.ToBytes(true /*preSignature*/)
 	// Return the size the transaction would be if the signature had its
@@ -275,7 +296,7 @@ func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) int64 {
 	// https://bitcoin.stackexchange.com/questions/77191/what-is-the-maximum-size-of-a-der-encoded-ecdsa-signature
 	const MaxDERSigLen = 74
 
-	return int64(len(txBytesNoSignature) + MaxDERSigLen)
+	return uint64(len(txBytesNoSignature) + MaxDERSigLen)
 }
 
 func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
@@ -295,7 +316,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		}
 	}
 
-	desoTxn, signingAccount, txnErr := constructTransaction(request.Operations, metadata.UTXOs, metadata.Change)
+	desoTxn, signingAccount, txnErr := constructTransaction(request.Operations, metadata.Inputs, metadata.Change)
 	if txnErr != nil {
 		return nil, txnErr
 	}

@@ -49,14 +49,10 @@ transfer(10){
       }
     });
 
-    // The amount we send to the recipient is a random value
-    // between the dust_amount and the value of the entire coin (minus
-    // the amount reserved for fee payment and covering the dust minimum
-    // of the change UTXO).
-    receivable_amount = {{sender.balance.value}} - {{send_buffer}};
+    // Send between dust_amount and 10 DESO
     recipient_amount = random_number({
       "minimum": {{dust_amount}},
-      "maximum": {{receivable_amount}}
+      "maximum": "10000000000"
     });
     print_message({
       "recipient_amount":{{recipient_amount}}
