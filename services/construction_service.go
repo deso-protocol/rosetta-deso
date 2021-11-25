@@ -49,7 +49,7 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
 	var fromAccount *types.AccountIdentifier
-	inputAmount := uint64(0)
+	inputAmount := int64(0)
 	numOutputs := uint64(0)
 
 	for _, op := range request.Operations {
@@ -60,7 +60,7 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 
 			fromAccount = op.Account
 
-			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
+			amount, err := strconv.ParseInt(op.Amount.Value, 10, 64)
 			if err != nil {
 				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
@@ -126,7 +126,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	metadata, err := types.MarshalMap(&constructionMetadata{
 		FeePerKB: feePerKB,
 		UTXOs:    utxos,
-		Change:   change,
+		Change:   uint64(change),
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -136,7 +136,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		Metadata: metadata,
 		SuggestedFee: []*types.Amount{
 			{
-				Value:    strconv.FormatUint(fee, 10),
+				Value:    strconv.FormatInt(fee, 10),
 				Currency: &deso.Currency,
 			},
 		},
@@ -198,9 +198,9 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry,
 	return desoTxn, signingAccount, nil
 }
 
-func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint64) ([]*lib.UtxoEntry, uint64, uint64) {
-	totalInput := uint64(0)
-	maxTxFee := uint64(0)
+func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint64) ([]*lib.UtxoEntry, int64, int64) {
+	totalInput := int64(0)
+	maxTxFee := int64(0)
 	desoTxn := &lib.MsgDeSoTxn{
 		TxInputs: []*lib.DeSoInput{},
 		TxOutputs: []*lib.DeSoOutput{
@@ -240,7 +240,7 @@ func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint
 		if totalInput < maxAmountNeeded {
 			desoTxn.TxInputs = append(desoTxn.TxInputs, (*lib.DeSoInput)(utxoEntry.UtxoKey))
 			selectedUtxos = append(selectedUtxos, utxoEntry)
-			totalInput += utxoEntry.AmountNanos
+			totalInput += int64(utxoEntry.AmountNanos)
 			continue
 		}
 
@@ -254,12 +254,12 @@ func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint
 	return selectedUtxos, maxTxFee, change
 }
 
-func _computeMaxTxFee(_tx *lib.MsgDeSoTxn, minFeeRateNanosPerKB uint64) uint64 {
+func _computeMaxTxFee(_tx *lib.MsgDeSoTxn, minFeeRateNanosPerKB uint64) int64 {
 	maxSizeBytes := _computeMaxTxSize(_tx)
-	return maxSizeBytes * minFeeRateNanosPerKB / 1000
+	return maxSizeBytes * int64(minFeeRateNanosPerKB) / 1000
 }
 
-func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) uint64 {
+func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) int64 {
 	// Compute the size of the transaction without the signature.
 	txBytesNoSignature, _ := _tx.ToBytes(true /*preSignature*/)
 	// Return the size the transaction would be if the signature had its
@@ -275,7 +275,7 @@ func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) uint64 {
 	// https://bitcoin.stackexchange.com/questions/77191/what-is-the-maximum-size-of-a-der-encoded-ecdsa-signature
 	const MaxDERSigLen = 74
 
-	return uint64(len(txBytesNoSignature)) + MaxDERSigLen
+	return int64(len(txBytesNoSignature) + MaxDERSigLen)
 }
 
 func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
@@ -426,8 +426,6 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 			continue
 		}
 
-		numOps += 1
-
 		op := &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: numOps,
@@ -445,6 +443,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 			Type: deso.OutputOpType,
 		}
 
+		numOps += 1
 		operations = append(operations, op)
 	}
 
