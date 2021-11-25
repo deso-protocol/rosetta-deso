@@ -59,17 +59,13 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 			// Add the account identifier to our map
 			inputPubKeysFoundMap[op.Account.Address] = true
 		} else if op.Type == deso.OutputOpType {
-			pkBytes, _, err := lib.Base58CheckDecode(op.Account.Address)
-			if err != nil {
-				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-			}
 			// Parse the amount of this output
 			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
 			if err != nil {
 				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
-			optionsObj.DeSoOutputs = append(optionsObj.DeSoOutputs, &lib.DeSoOutput{
-				PublicKey: pkBytes,
+			optionsObj.DeSoOutputs = append(optionsObj.DeSoOutputs, &desoOutput{
+				PublicKey: op.Account.Address,
 				AmountNanos: amount,
 			})
 		}
@@ -149,6 +145,18 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
+	fullDeSoOutputs := []*lib.DeSoOutput{}
+	for _, output := range options.DeSoOutputs {
+		pkBytes, _, err := lib.Base58CheckDecode(output.PublicKey)
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
+		fullDeSoOutputs = append(fullDeSoOutputs, &lib.DeSoOutput{
+			PublicKey: pkBytes,
+			AmountNanos: output.AmountNanos,
+		})
+	}
+
 	// Use the input amount to compute how many UTXOs will be needed
 	fromPubKeyBytes, _, err := lib.Base58CheckDecode(options.FromPublicKey)
 	if err != nil {
@@ -157,16 +165,21 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	txnn := &lib.MsgDeSoTxn{
 		// The inputs will be set below.
 		TxInputs:  []*lib.DeSoInput{},
-		TxOutputs: options.DeSoOutputs,
+		TxOutputs: fullDeSoOutputs,
 		PublicKey: fromPubKeyBytes,
 		TxnMeta:   &lib.BasicTransferMetadata{},
 	}
 	s.node.GetBlockchain().AddInputsAndChangeToTransaction(txnn, feePerKB, s.node.GetMempool())
 	suggestedFeeNanos := _computeMaxTxFee(txnn, feePerKB)
 
+	desoTxnBytes, err := txnn.ToBytes(true)
+	if err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
 	metadata, err := types.MarshalMap(&constructionMetadata{
 		FeePerKB: feePerKB,
-		DeSoSampleTxn: txnn,
+		DeSoSampleTxnHex: hex.EncodeToString(desoTxnBytes),
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -202,7 +215,7 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		}
 	}
 
-	desoTxnBytes, err := metadata.DeSoSampleTxn.ToBytes(true)
+	desoTxnBytes, err := hex.DecodeString(metadata.DeSoSampleTxnHex)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}

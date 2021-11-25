@@ -1,6 +1,9 @@
 package services
 
-import "github.com/deso-protocol/core/lib"
+type desoOutput struct {
+	PublicKey string
+	AmountNanos uint64
+}
 
 type preprocessOptions struct {
 	// The from public key is used to gather UTXOs in the metadata portion. This
@@ -8,7 +11,7 @@ type preprocessOptions struct {
 	// shift away from UTXOs to balance model.
 	FromPublicKey string `json:"from_public_key"`
 	// The outputs are used to compute the fee estimate in the metadata portion.
-	DeSoOutputs []*lib.DeSoOutput `json:"deso_outputs"`
+	DeSoOutputs []*desoOutput `json:"deso_outputs"`
 }
 
 type constructionMetadata struct {
@@ -16,7 +19,7 @@ type constructionMetadata struct {
 	// This transaction is used to estimate the fee in the metadata portion. The inputs
 	// on this transaction are also used in the offline portion in order to construct the
 	// final transaction.
-	DeSoSampleTxn *lib.MsgDeSoTxn `json:"deso_sample_txn"`
+	DeSoSampleTxnHex string `json:"deso_sample_txn_hex"`
 }
 
 type transactionMetadata struct {

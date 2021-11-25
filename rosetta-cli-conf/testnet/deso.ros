@@ -46,8 +46,7 @@ transfer(10){
       "minimum_balance":{
         "value": {{reserved_amount}},
         "currency": {{currency}}
-      },
-      "require_coin": true
+      }
     });
 
     // The amount we send to the recipient is a random value
@@ -63,22 +62,11 @@ transfer(10){
       "recipient_amount":{{recipient_amount}}
     });
 
-    // The change amount is what we aren't sending to the recipient
-    // minus the maximum fee. Don't worry, we will adjust this
-    // amount to avoid overpaying the fee after the dry run
-    // completes.
-    raw_change_amount = {{sender.balance.value}} - {{recipient_amount}};
-    change_amount = {{raw_change_amount}} - {{max_fee_amount}};
-    print_message({
-      "change_amount":{{change_amount}}
-    });
-
     // The last thing we need to do before creating the transaction
     // is to find a recipient with a *types.AccountIdentifier that
     // is not equal to the sender.
     recipient = find_balance({
       "not_account_identifier":[{{sender.account_identifier}}],
-      "not_coins":[{{sender.coin}}],
       "minimum_balance":{
         "value": "0",
         "currency": {{currency}}
@@ -95,20 +83,13 @@ transfer(10){
         "operation_identifier":{"index":0},
         "type":"INPUT",
         "account":{{sender.account_identifier}},
-        "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-        "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+        "amount":{"value":{{sender_amount}},"currency":{{currency}}}
       },
       {
         "operation_identifier":{"index":1},
         "type":"OUTPUT",
         "account":{{recipient.account_identifier}},
         "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
-      },
-      {
-        "operation_identifier":{"index":2},
-        "type":"OUTPUT",
-        "account":{{sender.account_identifier}},
-        "amount":{"value":{{change_amount}},"currency":{{currency}}}
       }
     ];
   },
@@ -119,10 +100,10 @@ transfer(10){
          "currency":{{currency}},
          "amounts":{{transfer_dry_run.suggested_fee}}
        });
+       print_message({
+         "suggested_fee":{{suggested_fee}}
+       });
 
-       // We can access the variables of other scenarios, so we don't
-       // need to recalculate raw_change_amount.
-       change_amount = {{raw_change_amount}} - {{suggested_fee.value}};
        transfer.network = {{transfer_dry_run.network}};
        transfer.confirmation_depth = {{transfer_dry_run.confirmation_depth}};
        transfer.operations = [
@@ -130,20 +111,13 @@ transfer(10){
            "operation_identifier":{"index":0},
            "type":"INPUT",
            "account":{{sender.account_identifier}},
-           "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-           "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+           "amount":{"value":{{sender_amount}},"currency":{{currency}}}
          },
          {
            "operation_identifier":{"index":1},
            "type":"OUTPUT",
            "account":{{recipient.account_identifier}},
            "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
-         },
-         {
-           "operation_identifier":{"index":2},
-           "type":"OUTPUT",
-           "account":{{sender.account_identifier}},
-           "amount":{"value":{{change_amount}},"currency":{{currency}}}
          }
        ];
      }
@@ -162,8 +136,7 @@ return_funds(10){
       "minimum_balance":{
         "value": {{reserved_amount}},
         "currency": {{currency}}
-      },
-      "require_coin": true
+      }
     });
 
     // We send the maximum amount available to the recipient. Don't worry
@@ -183,8 +156,7 @@ return_funds(10){
         "operation_identifier":{"index":0},
         "type":"INPUT",
         "account":{{sender.account_identifier}},
-        "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-        "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+        "amount":{"value":{{sender_amount}},"currency":{{currency}}}
       },
       {
         "operation_identifier":{"index":1},
@@ -216,8 +188,7 @@ return_funds(10){
         "operation_identifier":{"index":0},
         "type":"INPUT",
         "account":{{sender.account_identifier}},
-        "amount":{"value":{{sender_amount}},"currency":{{currency}}},
-        "coin_change":{"coin_action":"coin_spent", "coin_identifier":{{sender.coin}}}
+        "amount":{"value":{{sender_amount}},"currency":{{currency}}}
       },
       {
         "operation_identifier":{"index":1},
