@@ -71,7 +71,8 @@ transfer(10){
       "create_probability": 50
     });
 
-    sender_amount = 0 - {{sender.balance.value}};
+    sender_amount = 0 - {{recipient_amount}};
+    sender_amount -= {{send_buffer}};
     transfer_dry_run.confirmation_depth = "1";
     transfer_dry_run.dry_run = true;
     transfer_dry_run.operations = [
@@ -79,7 +80,7 @@ transfer(10){
         "operation_identifier":{"index":0},
         "type":"INPUT",
         "account":{{sender.account_identifier}},
-        "amount":{"value":{{sender_amount}},"currency":{{currency}}}
+        "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
       },
       {
         "operation_identifier":{"index":1},

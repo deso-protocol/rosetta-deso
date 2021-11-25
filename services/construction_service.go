@@ -251,7 +251,6 @@ func selectInputs(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uin
 		// the fee each time we add an input would result in N^2 behavior.
 		maxAmountNeeded := spendAmount
 		if totalInput >= spendAmount {
-			maxAmountNeeded -= maxTxFee
 			maxTxFee = _computeMaxTxFee(desoTxn, feeRate)
 			maxAmountNeeded += maxTxFee
 		}
