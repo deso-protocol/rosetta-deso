@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"
@@ -51,15 +52,27 @@ to quickly create a Cobra application.`,
 			return err
 		}
 
+		f, err := os.Create("/tmp/cpu.profile")
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			panic(err)
+		}
+
 		router := services.NewBlockchainRouter(config, node, asserter)
 		loggedRouter := server.LoggerMiddleware(router)
 		corsRouter := server.CorsMiddleware(loggedRouter)
 		log.Printf("Listening on port %d\n", config.Port)
-		go log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), corsRouter))
+		go func() {
+			log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), corsRouter))
+		}()
 
 		shutdownListener := make(chan os.Signal)
 		signal.Notify(shutdownListener, syscall.SIGINT, syscall.SIGTERM)
 		defer func() {
+			fmt.Println("STOPPING!")
+			pprof.StopCPUProfile()
 			node.Stop()
 			glog.Info("Shutdown complete")
 		}()

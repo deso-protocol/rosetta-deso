@@ -47,7 +47,6 @@ transfer(10){
         "value": {{reserved_amount}},
         "currency": {{currency}}
       },
-      "require_coin": true
     });
 
     // The amount we send to the recipient is a random value
@@ -163,7 +162,6 @@ return_funds(10){
         "value": {{reserved_amount}},
         "currency": {{currency}}
       },
-      "require_coin": true
     });
 
     // We send the maximum amount available to the recipient. Don't worry

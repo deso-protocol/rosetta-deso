@@ -47,21 +47,48 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 }
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
-	desoTxn, _, txnErr := constructTransaction(request.Operations)
-	if txnErr != nil {
-		return nil, txnErr
+	// Rack up the public keys from the inputs so that we can compute the
+	// corresponding metadata.
+	//
+	// Also compute the total input so that we can compute a suggested fee
+	// in the metadata portion.
+	optionsObj := &preprocessOptions{}
+	inputPubKeysFoundMap := make(map[string]bool)
+	for _, op := range request.Operations {
+		if op.Type == deso.InputOpType {
+			// Add the account identifier to our map
+			inputPubKeysFoundMap[op.Account.Address] = true
+		} else if op.Type == deso.OutputOpType {
+			pkBytes, _, err := lib.Base58CheckDecode(op.Account.Address)
+			if err != nil {
+				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			}
+			// Parse the amount of this output
+			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
+			if err != nil {
+				return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			}
+			optionsObj.DeSoOutputs = append(optionsObj.DeSoOutputs, &lib.DeSoOutput{
+				PublicKey: pkBytes,
+				AmountNanos: amount,
+			})
+		}
 	}
 
-	desoTxnBytes, err := desoTxn.ToBytes(true)
-	if err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
+	// Exactly one public key is required, otherwise that's an error.
+	if len(inputPubKeysFoundMap) != 1 {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf(
+			"Exactly one input public key is required but instead found: %v",
+			inputPubKeysFoundMap))
 	}
 
-	txnSize := uint64(len(desoTxnBytes) + MaxDERSigLen + FeeByteBuffer)
+	// Set the from public key on the options
+	for kk, _ := range inputPubKeysFoundMap {
+		optionsObj.FromPublicKey = kk
+		break
+	}
 
-	options, err := types.MarshalMap(&preprocessOptions{
-		TransactionSizeEstimate: txnSize,
-	})
+	options, err := types.MarshalMap(optionsObj)
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
@@ -69,6 +96,36 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 	return &types.ConstructionPreprocessResponse{
 		Options: options,
 	}, nil
+}
+
+// Define a helper function for computing the upper bound of the size
+// of a transaction and associated fees. This basically serializes the
+// transaction without the signature and then accounts for the maximum possible
+// size the signature could be.
+func _computeMaxTxSize(_tx *lib.MsgDeSoTxn) uint64 {
+	// Compute the size of the transaction without the signature.
+	txBytesNoSignature, _ := _tx.ToBytes(true /*preSignature*/)
+	// Return the size the transaction would be if the signature had its
+	// absolute maximum length.
+
+	// MaxDERSigLen is the maximum size that a DER signature can be.
+	//
+	// Note: I am pretty sure the true maximum is 71. But since this value is
+	// dependent on the size of R and S, and since it's generally used for
+	// safety purposes (e.g. ensuring that enough space has been allocated),
+	// it seems better to pad it a bit and stay on the safe side. You can see
+	// some discussion on getting to this number here:
+	// https://bitcoin.stackexchange.com/questions/77191/what-is-the-maximum-size-of-a-der-encoded-ecdsa-signature
+	const MaxDERSigLen = 74
+
+	return uint64(len(txBytesNoSignature)) + MaxDERSigLen
+}
+
+// A helper for computing the max fee given a txn. Assumes the longest signature
+// length.
+func _computeMaxTxFee(_tx *lib.MsgDeSoTxn, minFeeRateNanosPerKB uint64) uint64 {
+	maxSizeBytes := _computeMaxTxSize(_tx)
+	return maxSizeBytes * minFeeRateNanosPerKB / 1000
 }
 
 func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, request *types.ConstructionMetadataRequest) (*types.ConstructionMetadataResponse, *types.Error) {
@@ -87,99 +144,65 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		feePerKB = deso.MinFeeRateNanosPerKB
 	}
 
-	metadata, err := types.MarshalMap(&constructionMetadata{FeePerKB: feePerKB})
-	if err != nil {
-		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-	}
-
 	var options preprocessOptions
 	if err := types.UnmarshalMap(request.Options, &options); err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	suggestedFee := feePerKB * options.TransactionSizeEstimate / BytesPerKb
+	// Use the input amount to compute how many UTXOs will be needed
+	fromPubKeyBytes, _, err := lib.Base58CheckDecode(options.FromPublicKey)
+	if err != nil {
+		return nil, wrapErr(ErrDeSo, err)
+	}
+	txnn := &lib.MsgDeSoTxn{
+		// The inputs will be set below.
+		TxInputs:  []*lib.DeSoInput{},
+		TxOutputs: options.DeSoOutputs,
+		PublicKey: fromPubKeyBytes,
+		TxnMeta:   &lib.BasicTransferMetadata{},
+	}
+	s.node.GetBlockchain().AddInputsAndChangeToTransaction(txnn, feePerKB, s.node.GetMempool())
+	suggestedFeeNanos := _computeMaxTxFee(txnn, feePerKB)
+
+	metadata, err := types.MarshalMap(&constructionMetadata{
+		FeePerKB: feePerKB,
+		DeSoSampleTxn: txnn,
+	})
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
 
 	return &types.ConstructionMetadataResponse{
 		Metadata: metadata,
 		SuggestedFee: []*types.Amount{
 			{
-				Value:    strconv.FormatUint(suggestedFee, 10),
+				Value:    strconv.FormatUint(suggestedFeeNanos, 10),
 				Currency: &deso.Currency,
 			},
 		},
 	}, nil
 }
 
-func constructTransaction(operations []*types.Operation) (*lib.MsgDeSoTxn, *types.AccountIdentifier, *types.Error) {
-	desoTxn := &lib.MsgDeSoTxn{
-		TxInputs:  []*lib.DeSoInput{},
-		TxOutputs: []*lib.DeSoOutput{},
-		TxnMeta:   &lib.BasicTransferMetadata{},
-	}
-	var signingAccount *types.AccountIdentifier
-
-	for _, operation := range operations {
-		if operation.Type == deso.InputOpType {
-			txId, txnIndex, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
-			if err != nil {
-				return nil, nil, wrapErr(ErrInvalidCoin, err)
-			}
-
-			if signingAccount == nil {
-				signingAccount = operation.Account
-
-				publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
-				if err != nil {
-					return nil, nil, wrapErr(ErrInvalidPublicKey, err)
-				}
-
-				desoTxn.PublicKey = publicKeyBytes
-			}
-
-			// Can only have one signing account per transaction
-			if signingAccount.Address != operation.Account.Address {
-				return nil, nil, ErrMultipleSigners
-			}
-
-			desoTxn.TxInputs = append(desoTxn.TxInputs, &lib.DeSoInput{
-				TxID:  *txId,
-				Index: txnIndex,
-			})
-		} else if operation.Type == deso.OutputOpType {
-			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)
-			if err != nil {
-				return nil, nil, wrapErr(ErrInvalidPublicKey, err)
-			}
-
-			amount, err := types.AmountValue(operation.Amount)
-			if err != nil {
-				return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
-			}
-
-			desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
-				PublicKey:   publicKeyBytes,
-				AmountNanos: amount.Uint64(),
-			})
-		}
-	}
-
-	return desoTxn, signingAccount, nil
-}
-
 func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, request *types.ConstructionPayloadsRequest) (*types.ConstructionPayloadsResponse, *types.Error) {
+	// Convert map to Metadata struct
+	var metadata *constructionMetadata
+	if err := types.UnmarshalMap(request.Metadata, &metadata); err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+
+	// The input amounts are simply what was passed in the operations
 	var inputAmounts []string
+	var signingAccount *types.AccountIdentifier
 	for _, operation := range request.Operations {
 		if operation.Type == deso.InputOpType {
 			inputAmounts = append(inputAmounts, operation.Amount.Value)
+			// Assigning multiple times is OK because all the inputs have
+			// been checked to have the same account at this point.
+			signingAccount = operation.Account
 		}
 	}
 
-	desoTxn, signingAccount, txnErr := constructTransaction(request.Operations)
-	if txnErr != nil {
-		return nil, txnErr
-	}
-
-	desoTxnBytes, err := desoTxn.ToBytes(true)
+	desoTxnBytes, err := metadata.DeSoSampleTxn.ToBytes(true)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
