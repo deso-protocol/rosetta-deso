@@ -46,8 +46,7 @@ transfer(10){
       "minimum_balance":{
         "value": {{reserved_amount}},
         "currency": {{currency}}
-      },
-      "require_coin": true
+      }
     });
 
     // The amount we send to the recipient is a random value

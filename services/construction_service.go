@@ -47,7 +47,7 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 }
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
-	desoTxn, _, txnErr := constructTransaction(request.Operations)
+	desoTxn, _, txnErr := constructTransaction(request.Operations, nil)
 	if txnErr != nil {
 		return nil, txnErr
 	}
@@ -66,8 +66,19 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
+	var fromAccount *types.AccountIdentifier
+	for _, op := range request.Operations {
+		if op.Type == deso.InputOpType {
+			fromAccount = op.Account
+			break
+		}
+	}
+
 	return &types.ConstructionPreprocessResponse{
 		Options: options,
+		RequiredPublicKeys: []*types.AccountIdentifier{
+			fromAccount,
+		},
 	}, nil
 }
 
@@ -76,18 +87,34 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, ErrUnavailableOffline
 	}
 
-	utxoView, err := s.node.GetMempool().GetAugmentedUniversalView()
+	mempoolView, err := s.node.GetMempool().GetAugmentedUniversalView()
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
 	// Determine the network-wide feePerKB rate
-	feePerKB := utxoView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
+	feePerKB := mempoolView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
 	if feePerKB == 0 {
 		feePerKB = deso.MinFeeRateNanosPerKB
 	}
 
-	metadata, err := types.MarshalMap(&constructionMetadata{FeePerKB: feePerKB})
+	// Fetch all UTXOs we could spend
+	fromAccount := request.PublicKeys[0]
+
+	dbView, err := lib.NewUtxoView(s.node.GetBlockchain().DB(), s.node.Params, nil)
+	if err != nil {
+		return nil, wrapErr(ErrDeSo, err)
+	}
+
+	utxoEntries, err := dbView.GetUnspentUtxoEntrysForPublicKey(fromAccount.Bytes)
+	if err != nil {
+		return nil, wrapErr(ErrDeSo, err)
+	}
+
+	metadata, err := types.MarshalMap(&constructionMetadata{
+		FeePerKB: feePerKB,
+		UTXOs:    utxoEntries,
+	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
@@ -110,7 +137,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}, nil
 }
 
-func constructTransaction(operations []*types.Operation) (*lib.MsgDeSoTxn, *types.AccountIdentifier, *types.Error) {
+func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry) (*lib.MsgDeSoTxn, *types.AccountIdentifier, *types.Error) {
 	desoTxn := &lib.MsgDeSoTxn{
 		TxInputs:  []*lib.DeSoInput{},
 		TxOutputs: []*lib.DeSoOutput{},
@@ -118,33 +145,42 @@ func constructTransaction(operations []*types.Operation) (*lib.MsgDeSoTxn, *type
 	}
 	var signingAccount *types.AccountIdentifier
 
+	spendAmount := int64(0)
+
 	for _, operation := range operations {
 		if operation.Type == deso.InputOpType {
-			txId, txnIndex, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
+			amount, err := strconv.ParseInt(operation.Amount.Value, 10, 64)
 			if err != nil {
-				return nil, nil, wrapErr(ErrInvalidCoin, err)
+				return nil, nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 			}
 
-			if signingAccount == nil {
-				signingAccount = operation.Account
+			spendAmount += amount
 
-				publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
-				if err != nil {
-					return nil, nil, wrapErr(ErrInvalidPublicKey, err)
-				}
-
-				desoTxn.PublicKey = publicKeyBytes
-			}
-
-			// Can only have one signing account per transaction
-			if signingAccount.Address != operation.Account.Address {
-				return nil, nil, ErrMultipleSigners
-			}
-
-			desoTxn.TxInputs = append(desoTxn.TxInputs, &lib.DeSoInput{
-				TxID:  *txId,
-				Index: txnIndex,
-			})
+			////txId, txnIndex, err := ParseCoinIdentifier(operation.CoinChange.CoinIdentifier)
+			////if err != nil {
+			////	return nil, nil, wrapErr(ErrInvalidCoin, err)
+			////}
+			//
+			//if signingAccount == nil {
+			//	signingAccount = operation.Account
+			//
+			//	publicKeyBytes, _, err := lib.Base58CheckDecode(signingAccount.Address)
+			//	if err != nil {
+			//		return nil, nil, wrapErr(ErrInvalidPublicKey, err)
+			//	}
+			//
+			//	desoTxn.PublicKey = publicKeyBytes
+			//}
+			//
+			//// Can only have one signing account per transaction
+			//if signingAccount.Address != operation.Account.Address {
+			//	return nil, nil, ErrMultipleSigners
+			//}
+			//
+			//desoTxn.TxInputs = append(desoTxn.TxInputs, &lib.DeSoInput{
+			//	TxID:  *txId,
+			//	Index: txnIndex,
+			//})
 		} else if operation.Type == deso.OutputOpType {
 			publicKeyBytes, _, err := lib.Base58CheckDecode(operation.Account.Address)
 			if err != nil {
@@ -163,6 +199,38 @@ func constructTransaction(operations []*types.Operation) (*lib.MsgDeSoTxn, *type
 		}
 	}
 
+	// Do UTXO selection for inputs
+	totalInput := int64(0)
+	for _, utxoEntry := range utxos {
+		// As an optimization, don't worry about the fee until the total input has
+		// definitively exceeded the amount we want to spend. We do this because computing
+		// the fee each time we add an input would result in N^2 behavior.
+		maxAmountNeeded := spendAmount
+		if totalInput >= spendAmount {
+			maxAmountNeeded += _computeMaxTxFee(txCopyWithChangeOutput, minFeeRateNanosPerKB)
+		}
+
+		// If the amount of input we have isn't enough to cover our upper bound on
+		// the total amount we could need, add an input and continue.
+		if totalInput < maxAmountNeeded {
+			txCopyWithChangeOutput.TxInputs = append(txCopyWithChangeOutput.TxInputs, (*DeSoInput)(utxoEntry.UtxoKey))
+			utxoEntriesBeingUsed = append(utxoEntriesBeingUsed, utxoEntry)
+
+			amountToAdd := utxoEntry.AmountNanos
+			// For Bitcoin burns, we subtract a tiny amount of slippage to the amount we can
+			// spend. This makes reorderings more forgiving.
+			if utxoEntry.UtxoType == UtxoTypeBitcoinBurn {
+				amountToAdd = uint64(float64(amountToAdd) * .999)
+			}
+			totalInput += amountToAdd
+			continue
+		}
+
+		// If we get here, we know we have enough input to cover the upper bound
+		// estimate of our amount needed so break.
+		break
+	}
+
 	return desoTxn, signingAccount, nil
 }
 
@@ -174,7 +242,12 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 		}
 	}
 
-	desoTxn, signingAccount, txnErr := constructTransaction(request.Operations)
+	var metadata constructionMetadata
+	if err := types.UnmarshalMap(request.Metadata, &metadata); err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+
+	desoTxn, signingAccount, txnErr := constructTransaction(request.Operations, metadata.UTXOs)
 	if txnErr != nil {
 		return nil, txnErr
 	}
