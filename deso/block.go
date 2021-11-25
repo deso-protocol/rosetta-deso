@@ -44,6 +44,52 @@ func (node *Node) CurrentBlock() *types.Block {
 	return node.GetBlockAtHeight(int64(blockchain.BlockTip().Height))
 }
 
+type partialAccountIdentifier struct {
+	Address    string
+	SubAddress string
+}
+
+func squashOperations(ops []*types.Operation) []*types.Operation {
+	opMap := make(map[partialAccountIdentifier]int64, len(ops))
+	var squashedOps []*types.Operation
+	nextOp := int64(0)
+
+	for _, op := range ops {
+		account := newPartialAccountIdentifier(op.Account)
+		opIndex, exists := opMap[account]
+
+		if exists {
+			existingOp := squashedOps[opIndex]
+			oldAmount, _ := strconv.ParseInt(existingOp.Amount.Value, 10, 64)
+			addAmount, _ := strconv.ParseInt(op.Amount.Value, 10, 64)
+			existingOp.Amount.Value = strconv.FormatInt(oldAmount+addAmount, 10)
+		} else {
+			opMap[account] = nextOp
+			op.OperationIdentifier.Index = nextOp
+			squashedOps = append(squashedOps, op)
+			nextOp += 1
+		}
+	}
+
+	j, _ := json.Marshal(squashedOps)
+	fmt.Println(string(j))
+
+	return squashedOps
+}
+
+func newPartialAccountIdentifier(accountIdentifier *types.AccountIdentifier) partialAccountIdentifier {
+	if accountIdentifier.SubAccount != nil {
+		return partialAccountIdentifier{
+			Address:    accountIdentifier.Address,
+			SubAddress: accountIdentifier.SubAccount.Address,
+		}
+	} else {
+		return partialAccountIdentifier{
+			Address: accountIdentifier.Address,
+		}
+	}
+}
+
 func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	blockchain := node.GetBlockchain()
 
@@ -91,12 +137,13 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		_ = json.Unmarshal(metadataJSON, &metadata)
 
 		txnHash := txn.Hash().String()
-		transaction := &types.Transaction{
+		transactionn := &types.Transaction{
 			TransactionIdentifier: &types.TransactionIdentifier{Hash: txnHash},
 			Metadata:              metadata,
 		}
 
-		transaction.Operations = []*types.Operation{}
+		txnOps := []*types.Operation{}
+
 
 		for _, input := range txn.TxInputs {
 			// Fetch the input amount from Rosetta Index
@@ -115,7 +162,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index: int64(len(transaction.Operations)),
+					Index: int64(len(txnOps)),
 				},
 
 				Account: &types.AccountIdentifier{
@@ -128,13 +175,13 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				Type:   InputOpType,
 			}
 
-			transaction.Operations = append(transaction.Operations, op)
+			txnOps = append(txnOps, op)
 		}
 
 		for _, output := range txn.TxOutputs {
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index: int64(len(transaction.Operations)),
+					Index: int64(len(txnOps)),
 				},
 
 				Account: &types.AccountIdentifier{
@@ -150,7 +197,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				Type:   OutputOpType,
 			}
 
-			transaction.Operations = append(transaction.Operations, op)
+			txnOps = append(txnOps, op)
 		}
 
 		// Add all the special ops for specific txn types.
@@ -158,27 +205,29 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			utxoOpsForTxn := utxoOpsForBlock[txnIndexInBlock]
 
 			// Add implicit outputs from UtxoOps
-			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, implicitOutputs...)
+			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(txnOps))
+			txnOps = append(txnOps, implicitOutputs...)
 
 			// Add inputs/outputs for creator coins
-			creatorCoinOps := node.getCreatorCoinOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, creatorCoinOps...)
+			creatorCoinOps := node.getCreatorCoinOps(txn, utxoOpsForTxn, len(txnOps))
+			txnOps = append(txnOps, creatorCoinOps...)
 
 			// Add inputs/outputs for swap identity
-			swapIdentityOps := node.getSwapIdentityOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, swapIdentityOps...)
+			swapIdentityOps := node.getSwapIdentityOps(txn, utxoOpsForTxn, len(txnOps))
+			txnOps = append(txnOps, swapIdentityOps...)
 
 			// Add inputs for accept nft bid
-			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, acceptNftOps...)
+			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(txnOps))
+			txnOps = append(txnOps, acceptNftOps...)
 
 			// Add inputs for update profile
-			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, updateProfileOps...)
+			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(txnOps))
+			txnOps = append(txnOps, updateProfileOps...)
 		}
 
-		transactions = append(transactions, transaction)
+		transactionn.Operations = squashOperations(txnOps)
+
+		transactions = append(transactions, transactionn)
 	}
 
 	return &types.Block{
