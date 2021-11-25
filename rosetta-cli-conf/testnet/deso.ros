@@ -136,8 +136,7 @@ return_funds(10){
       "minimum_balance":{
         "value": {{reserved_amount}},
         "currency": {{currency}}
-      },
-      "require_coin": true
+      }
     });
 
     // We send the maximum amount available to the recipient. Don't worry
