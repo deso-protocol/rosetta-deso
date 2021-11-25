@@ -106,12 +106,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	// Fetch all UTXOs we could spend
 	fromAccount := request.PublicKeys[0]
 
-	dbView, err := lib.NewUtxoView(s.node.GetBlockchain().DB(), s.node.Params, nil)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
-
-	utxoEntries, err := dbView.GetUnspentUtxoEntrysForPublicKey(fromAccount.Bytes)
+	utxoEntries, err := mempoolView.GetUnspentUtxoEntrysForPublicKey(fromAccount.Bytes)
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
@@ -190,10 +185,12 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry,
 		desoTxn.TxInputs = append(desoTxn.TxInputs, (*lib.DeSoInput)(utxo.UtxoKey))
 	}
 
-	desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
-		PublicKey:   desoTxn.PublicKey,
-		AmountNanos: change,
-	})
+	if change > 0 {
+		desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
+			PublicKey:   desoTxn.PublicKey,
+			AmountNanos: change,
+		})
+	}
 
 	return desoTxn, signingAccount, nil
 }
@@ -230,7 +227,6 @@ func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint
 		// the fee each time we add an input would result in N^2 behavior.
 		maxAmountNeeded := spendAmount
 		if totalInput >= spendAmount {
-			maxAmountNeeded -= maxTxFee
 			maxTxFee = _computeMaxTxFee(desoTxn, feeRate)
 			maxAmountNeeded += maxTxFee
 		}
