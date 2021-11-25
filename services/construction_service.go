@@ -49,7 +49,9 @@ func (s *ConstructionAPIService) ConstructionDerive(ctx context.Context, request
 
 func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, request *types.ConstructionPreprocessRequest) (*types.ConstructionPreprocessResponse, *types.Error) {
 	var fromAccount *types.AccountIdentifier
-	var inputAmount uint64
+	inputAmount := uint64(0)
+	numOutputs := uint64(0)
+
 	for _, op := range request.Operations {
 		if op.Type == deso.InputOpType {
 			if fromAccount != nil {
@@ -64,11 +66,14 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 			}
 
 			inputAmount = amount
+		} else if op.Type == deso.OutputOpType {
+			numOutputs += 1
 		}
 	}
 
 	options, err := types.MarshalMap(&preprocessOptions{
 		InputAmount: inputAmount,
+		NumOutputs:  numOutputs,
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -116,7 +121,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	utxos, fee, change := selectUtxos(utxoEntries, options.InputAmount, feePerKB)
+	utxos, fee, change := selectUtxos(utxoEntries, options, feePerKB)
 
 	metadata, err := types.MarshalMap(&constructionMetadata{
 		FeePerKB: feePerKB,
@@ -193,7 +198,7 @@ func constructTransaction(operations []*types.Operation, utxos []*lib.UtxoEntry,
 	return desoTxn, signingAccount, nil
 }
 
-func selectUtxos(utxos []*lib.UtxoEntry, spendAmount uint64, feeRate uint64) ([]*lib.UtxoEntry, uint64, uint64) {
+func selectUtxos(utxos []*lib.UtxoEntry, options preprocessOptions, feeRate uint64) ([]*lib.UtxoEntry, uint64, uint64) {
 	totalInput := uint64(0)
 	maxTxFee := uint64(0)
 	desoTxn := &lib.MsgDeSoTxn{
@@ -204,16 +209,20 @@ func selectUtxos(utxos []*lib.UtxoEntry, spendAmount uint64, feeRate uint64) ([]
 				PublicKey:   make([]byte, 33),
 				AmountNanos: math.MaxUint64,
 			},
-			// Placeholder for recipient output
-			{
-				PublicKey:   make([]byte, 33),
-				AmountNanos: math.MaxUint64,
-			},
 		},
 		TxnMeta: &lib.BasicTransferMetadata{},
 	}
 
+	// Add placeholders for recipient outputs
+	for i := uint64(0); i < options.NumOutputs; i++ {
+		desoTxn.TxOutputs = append(desoTxn.TxOutputs, &lib.DeSoOutput{
+			PublicKey:   make([]byte, 33),
+			AmountNanos: math.MaxUint64,
+		})
+	}
+
 	var selectedUtxos []*lib.UtxoEntry
+	spendAmount := options.InputAmount
 
 	for _, utxoEntry := range utxos {
 		// As an optimization, don't worry about the fee until the total input has
