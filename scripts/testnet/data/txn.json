@@ -16,7 +16,7 @@
 			"amount": {
 				"value": "-799960000",
 				"currency": {
-					"symbol": "tDESO",
+					"symbol": "DESO",
 					"decimals": 9
 				}
 			},
@@ -39,7 +39,7 @@
 			"amount": {
 				"value": "150977271",
 				"currency": {
-					"symbol": "tDESO",
+					"symbol": "DESO",
 					"decimals": 9
 				}
 			}
@@ -56,7 +56,7 @@
 			"amount": {
 				"value": "648962729",
 				"currency": {
-					"symbol": "tDESO",
+					"symbol": "DESO",
 					"decimals": 9
 				}
 			}
