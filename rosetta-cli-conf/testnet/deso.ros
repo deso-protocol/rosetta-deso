@@ -39,15 +39,11 @@ transfer(10){
     max_fee_amount = "1200";
     send_buffer = {{dust_amount}} + {{max_fee_amount}};
 
-    // We look for a coin of value >= the reserved_amount to create
-    // a transfer with change (reserved_amount is max_fee_amount + dust_amount x 2).
-    reserved_amount = "2400";
-    sender = find_balance({
-      "minimum_balance":{
-        "value": {{reserved_amount}},
-        "currency": {{currency}}
-      }
-    });
+    sender = {
+        "account_identifier": {
+            "address": "tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF"
+        }
+    };
 
     // Send between dust_amount and 10 DESO
     recipient_amount = random_number({
