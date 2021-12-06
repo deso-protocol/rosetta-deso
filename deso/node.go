@@ -12,9 +12,9 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/deso-protocol/core/lib"
+	"github.com/deso-protocol/go-deadlock"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/glog"
-	"github.com/sasha-s/go-deadlock"
 )
 
 func getAddrsToListenOn(protocolPort int) ([]net.TCPAddr, []net.Listener) {
