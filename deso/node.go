@@ -61,22 +61,22 @@ func getAddrsToListenOn(protocolPort int) ([]net.TCPAddr, []net.Listener) {
 func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.DeSoParams) {
 	ipAddrs, err := net.LookupIP(host)
 	if err != nil {
-		glog.Tracef("_addSeedAddrs: DNS discovery failed on seed host (continuing on): %s %v\n", host, err)
+		glog.V(2).Info("_addSeedAddrs: DNS discovery failed on seed host (continuing on): %s %v\n", host, err)
 		return
 	}
 	if len(ipAddrs) == 0 {
-		glog.Tracef("_addSeedAddrs: No IPs found for host: %s\n", host)
+		glog.V(2).Info("_addSeedAddrs: No IPs found for host: %s\n", host)
 		return
 	}
 
 	// Don't take more than 5 IPs per host.
 	ipsPerHost := 5
 	if len(ipAddrs) > ipsPerHost {
-		glog.Debugf("_addSeedAddrs: Truncating IPs found from %d to %d\n", len(ipAddrs), ipsPerHost)
+		glog.V(1).Infof("_addSeedAddrs: Truncating IPs found from %d to %d\n", len(ipAddrs), ipsPerHost)
 		ipAddrs = ipAddrs[:ipsPerHost]
 	}
 
-	glog.Debugf("_addSeedAddrs: Adding seed IPs from seed %s: %v\n", host, ipAddrs)
+	glog.V(1).Infof("_addSeedAddrs: Adding seed IPs from seed %s: %v\n", host, ipAddrs)
 
 	// Convert addresses to NetAddress'es.
 	netAddrs := make([]*wire.NetAddress, len(ipAddrs))
@@ -91,7 +91,7 @@ func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.De
 			ip,
 			params.DefaultSocketPort)
 	}
-	glog.Debugf("_addSeedAddrs: Computed the following wire.NetAddress'es: %s", spew.Sdump(netAddrs))
+	glog.V(1).Infof("_addSeedAddrs: Computed the following wire.NetAddress'es: %s", spew.Sdump(netAddrs))
 
 	// Normally the second argument is the source who told us about the
 	// addresses we're adding. In this case since the source is a DNS seed
@@ -110,7 +110,7 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 				wg.Add(1)
 				go func(dnsGenerator []string) {
 					dnsString := fmt.Sprintf("%s%d%s", dnsGenerator[0], dnsNumber, dnsGenerator[1])
-					glog.Tracef("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
+					glog.V(2).Info("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
 					addIPsForHost(desoAddrMgr, dnsString, params)
 					wg.Done()
 				}(dnsGeneratorOuter)
@@ -128,7 +128,7 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 				wg.Add(1)
 				go func(dnsGenerator []string) {
 					dnsString := fmt.Sprintf("%s%d%s", dnsGenerator[0], dnsNumber, dnsGenerator[1])
-					glog.Tracef("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
+					glog.V(2).Info("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
 					addIPsForHost(desoAddrMgr, dnsString, params)
 					wg.Done()
 				}(dnsGeneratorOuter)
