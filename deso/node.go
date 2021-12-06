@@ -158,8 +158,8 @@ func NewNode(config *Config) *Node {
 
 func (node *Node) Start() {
 	// TODO: Replace glog with logrus so we can also get rid of flag library
+	flag.Set("alsologtostderr", "true")
 	flag.Parse()
-	glog.Init()
 
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
