@@ -8,7 +8,6 @@ COPY rosetta-deso/go.mod rosetta-deso/
 COPY rosetta-deso/go.sum rosetta-deso/
 COPY core/go.mod core/
 COPY core/go.sum core/
-COPY core/third_party/ core/third_party/
 
 WORKDIR /deso/src/rosetta-deso
 
