@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/deso-protocol/core"
+	"github.com/deso-protocol/core/db"
 	"github.com/deso-protocol/core/view"
 	"strconv"
 
@@ -107,7 +108,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				Index: input.Index,
 			}]
 			if !amountExists {
-				fmt.Printf("Error: input missing for txn %v index %v\n", lib.PkToStringBoth(input.TxID[:]), input.Index)
+				fmt.Printf("Error: input missing for txn %v index %v\n", db.PkToStringBoth(input.TxID[:]), input.Index)
 			}
 
 			amount := &types.Amount{
@@ -248,7 +249,7 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.U
 	var operations []*types.Operation
 
 	// Extract creator public key
-	creatorPublicKey := lib.PkToString(txnMeta.ProfilePublicKey, node.Params)
+	creatorPublicKey := db.PkToString(txnMeta.ProfilePublicKey, node.Params)
 
 	// Extract the CreatorCoinOperation from tne UtxoOperations passed in
 	var creatorCoinOp *view.UtxoOperation
@@ -326,14 +327,14 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.
 	var operations []*types.Operation
 
 	fromAccount := &types.AccountIdentifier{
-		Address: lib.PkToString(realTxMeta.FromPublicKey, node.Params),
+		Address: db.PkToString(realTxMeta.FromPublicKey, node.Params),
 		SubAccount: &types.SubAccountIdentifier{
 			Address: CreatorCoin,
 		},
 	}
 
 	toAccount := &types.AccountIdentifier{
-		Address: lib.PkToString(realTxMeta.ToPublicKey, node.Params),
+		Address: db.PkToString(realTxMeta.ToPublicKey, node.Params),
 		SubAccount: &types.SubAccountIdentifier{
 			Address: CreatorCoin,
 		},
@@ -421,7 +422,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.Utx
 	var operations []*types.Operation
 
 	royaltyAccount := &types.AccountIdentifier{
-		Address: lib.PkToString(acceptNFTOp.AcceptNFTBidCreatorPublicKey, node.Params),
+		Address: db.PkToString(acceptNFTOp.AcceptNFTBidCreatorPublicKey, node.Params),
 		SubAccount: &types.SubAccountIdentifier{
 			Address: CreatorCoin,
 		},
@@ -453,7 +454,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.Utx
 			Type:   InputOpType,
 			Status: &SuccessStatus,
 			Account: &types.AccountIdentifier{
-				Address: lib.PkToString(acceptNFTOp.AcceptNFTBidBidderPublicKey, node.Params),
+				Address: db.PkToString(acceptNFTOp.AcceptNFTBidBidderPublicKey, node.Params),
 			},
 			Amount: inputAmount,
 		})
@@ -593,6 +594,6 @@ func (node *Node) getInputAmount(input *lib.DeSoInput, utxoOpsForTxn []*view.Utx
 	}
 
 	// If we get here then we failed to find the input we were looking for.
-	fmt.Printf("Error: input missing for txn %v index %v\n", lib.PkToStringBoth(input.TxID[:]), input.Index)
+	fmt.Printf("Error: input missing for txn %v index %v\n", db.PkToStringBoth(input.TxID[:]), input.Index)
 	return nil
 }

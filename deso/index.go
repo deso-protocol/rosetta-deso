@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"github.com/deso-protocol/core"
+	"github.com/deso-protocol/core/db"
 	"github.com/deso-protocol/core/lib"
 	"github.com/deso-protocol/core/view"
 	"github.com/dgraph-io/badger/v3"
@@ -95,8 +96,8 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *core.PublicKey, blockHe
 
 	prefix := append([]byte{}, startPrefix)
 	prefix = append(prefix, publicKey[:]...)
-	prefix = append(prefix, lib.EncodeUint64(blockHeight)...)
-	prefix = append(prefix, lib.EncodeUint64(balance)...)
+	prefix = append(prefix, db.EncodeUint64(blockHeight)...)
+	prefix = append(prefix, db.EncodeUint64(balance)...)
 	return prefix
 }
 
@@ -152,7 +153,7 @@ func GetBalanceForPublicKeyAtBlockHeightWithTxn(
 	// If we get here we found a valid key. Decode the balance from it
 	// and return it.
 	// One byte for the prefix
-	return lib.DecodeUint64(keyFound[1+len(publicKey)+len(lib.EncodeUint64(blockHeight)):])
+	return db.DecodeUint64(keyFound[1+len(publicKey)+len(db.EncodeUint64(blockHeight)):])
 }
 
 func (index *Index) GetBalanceSnapshot(isLockedBalance bool, publicKey *core.PublicKey, blockHeight uint64) uint64 {

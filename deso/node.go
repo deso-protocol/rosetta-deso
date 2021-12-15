@@ -3,6 +3,7 @@ package deso
 import (
 	"flag"
 	"fmt"
+	"github.com/deso-protocol/core/db"
 	"math/rand"
 	"net"
 	"path/filepath"
@@ -86,7 +87,7 @@ func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.De
 			// randomly selected "last seen time" between 3
 			// and 7 days ago similar to what bitcoind does.
 			time.Now().Add(-1*time.Second*time.Duration(lib.SecondsIn3Days+
-				lib.RandInt32(lib.SecondsIn4Days))),
+				db.RandInt32(lib.SecondsIn4Days))),
 			0,
 			ip,
 			params.DefaultSocketPort)
@@ -183,7 +184,7 @@ func (node *Node) Start() {
 		go addSeedAddrsFromPrefixes(desoAddrMgr, node.Config.Params)
 	}
 
-	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
+	dbDir := db.GetBadgerDbPath(node.Config.DataDirectory)
 	opts := badger.DefaultOptions(dbDir)
 	opts.ValueDir = dbDir
 	opts.MemTableSize = 1024 << 20
