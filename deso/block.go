@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/deso-protocol/core"
+	"github.com/deso-protocol/core/view"
 	"strconv"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -16,7 +18,7 @@ func (node *Node) GetBlock(hash string) *types.Block {
 		return nil
 	}
 
-	blockHash := &lib.BlockHash{}
+	blockHash := &core.BlockHash{}
 	copy(blockHash[:], hashBytes[:])
 
 	blockchain := node.GetBlockchain()
@@ -73,12 +75,12 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 	// TODO: Can we be smarter about this size somehow?
 	// 2x number of transactions feels like a good enough proxy for now
-	spentUtxos := make(map[lib.UtxoKey]uint64, 2*len(utxoOpsForBlock))
+	spentUtxos := make(map[core.UtxoKey]uint64, 2*len(utxoOpsForBlock))
 
 	// Find all spent UTXOs for this block
 	for _, utxoOps := range utxoOpsForBlock {
 		for _, utxoOp := range utxoOps {
-			if utxoOp.Type == lib.OperationTypeSpendUtxo {
+			if utxoOp.Type == view.OperationTypeSpendUtxo {
 				spentUtxos[*utxoOp.Entry.UtxoKey] = utxoOp.Entry.AmountNanos
 			}
 		}
@@ -100,7 +102,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 		for _, input := range txn.TxInputs {
 			// Fetch the input amount from Rosetta Index
-			spentAmount, amountExists := spentUtxos[lib.UtxoKey{
+			spentAmount, amountExists := spentUtxos[core.UtxoKey{
 				TxID:  input.TxID,
 				Index: input.Index,
 			}]
@@ -234,7 +236,7 @@ func newPartialAccountIdentifier(accountIdentifier *types.AccountIdentifier) par
 	}
 }
 
-func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	// If we're not dealing with a CreatorCoin txn then we don't have any creator
 	// coin ops to add.
 	if txn.TxnMeta.GetTxnType() != lib.TxnTypeCreatorCoin {
@@ -249,9 +251,9 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Ut
 	creatorPublicKey := lib.PkToString(txnMeta.ProfilePublicKey, node.Params)
 
 	// Extract the CreatorCoinOperation from tne UtxoOperations passed in
-	var creatorCoinOp *lib.UtxoOperation
+	var creatorCoinOp *view.UtxoOperation
 	for _, utxoOp := range utxoOpsForTxn {
-		if utxoOp.Type == lib.OperationTypeCreatorCoin {
+		if utxoOp.Type == view.OperationTypeCreatorCoin {
 			creatorCoinOp = utxoOp
 			break
 		}
@@ -301,7 +303,7 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Ut
 	return operations
 }
 
-func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	// We only deal with SwapIdentity txns in this function
 	if txn.TxnMeta.GetTxnType() != lib.TxnTypeSwapIdentity {
 		return nil
@@ -309,9 +311,9 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	realTxMeta := txn.TxnMeta.(*lib.SwapIdentityMetadataa)
 
 	// Extract the SwapIdentity op
-	var swapIdentityOp *lib.UtxoOperation
+	var swapIdentityOp *view.UtxoOperation
 	for _, utxoOp := range utxoOpsForTxn {
-		if utxoOp.Type == lib.OperationTypeSwapIdentity {
+		if utxoOp.Type == view.OperationTypeSwapIdentity {
 			swapIdentityOp = utxoOp
 			break
 		}
@@ -397,16 +399,16 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	return operations
 }
 
-func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	if txn.TxnMeta.GetTxnType() != lib.TxnTypeAcceptNFTBid {
 		return nil
 	}
 	realTxnMeta := txn.TxnMeta.(*lib.AcceptNFTBidMetadata)
 
 	// Extract the AcceptNFTBid op
-	var acceptNFTOp *lib.UtxoOperation
+	var acceptNFTOp *view.UtxoOperation
 	for _, utxoOp := range utxoOpsForTxn {
-		if utxoOp.Type == lib.OperationTypeAcceptNFTBid {
+		if utxoOp.Type == view.OperationTypeAcceptNFTBid {
 			acceptNFTOp = utxoOp
 			break
 		}
@@ -487,7 +489,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 	return operations
 }
 
-func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	if txn.TxnMeta.GetTxnType() != lib.TxnTypeUpdateProfile {
 		return nil
 	}
@@ -496,7 +498,7 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.
 	var amount *types.Amount
 
 	for _, utxoOp := range utxoOpsForTxn {
-		if utxoOp.Type == lib.OperationTypeUpdateProfile {
+		if utxoOp.Type == view.OperationTypeUpdateProfile {
 			if utxoOp.ClobberedProfileBugDESOLockedNanos > 0 {
 				amount = &types.Amount{
 					Value:    strconv.FormatInt(int64(utxoOp.ClobberedProfileBugDESOLockedNanos)*-1, 10),
@@ -530,12 +532,12 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.
 	return operations
 }
 
-func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
 
 	for _, utxoOp := range utxoOpsForTxn {
-		if utxoOp.Type == lib.OperationTypeAddUtxo &&
+		if utxoOp.Type == view.OperationTypeAddUtxo &&
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
 			utxoOp.Entry.UtxoKey.Index >= numOutputs {
 
@@ -564,12 +566,12 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	return operations
 }
 
-func (node *Node) getInputAmount(input *lib.DeSoInput, utxoOpsForTxn []*lib.UtxoOperation) *types.Amount {
+func (node *Node) getInputAmount(input *lib.DeSoInput, utxoOpsForTxn []*view.UtxoOperation) *types.Amount {
 	amount := types.Amount{}
 
 	// Fix for returning input amounts for genesis block transactions
 	// This is needed because we don't generate UtxoOperations for the genesis
-	zeroBlockHash := lib.BlockHash{}
+	zeroBlockHash := core.BlockHash{}
 	if input.TxID == zeroBlockHash {
 		output := node.Params.GenesisBlock.Txns[0].TxOutputs[input.Index]
 		amount.Value = strconv.FormatInt(int64(output.AmountNanos)*-1, 10)
@@ -579,7 +581,7 @@ func (node *Node) getInputAmount(input *lib.DeSoInput, utxoOpsForTxn []*lib.Utxo
 
 	// Iterate over the UtxoOperations created by the txn to find the one corresponding to the index specified.
 	for _, utxoOp := range utxoOpsForTxn {
-		if utxoOp.Type == lib.OperationTypeSpendUtxo &&
+		if utxoOp.Type == view.OperationTypeSpendUtxo &&
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
 			utxoOp.Entry.UtxoKey.TxID == input.TxID &&
 			utxoOp.Entry.UtxoKey.Index == input.Index {

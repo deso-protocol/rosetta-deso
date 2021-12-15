@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"encoding/hex"
+	"github.com/deso-protocol/core"
+	"github.com/deso-protocol/core/view"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"strconv"
 
@@ -51,7 +53,7 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 	blockchain := node.GetBlockchain()
 	currentBlock := blockchain.BlockTip()
 
-	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil)
+	dbView, err := view.NewUtxoView(blockchain.DB(), node.Params, nil)
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
@@ -113,7 +115,7 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 			return nil, wrapErr(ErrDeSo, err)
 		}
 
-		blockHash := &lib.BlockHash{}
+		blockHash := &core.BlockHash{}
 		copy(blockHash[:], hashBytes[:])
 
 		desoBlock = node.GetBlockchain().GetBlock(blockHash)
@@ -131,7 +133,7 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	if err != nil {
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
-	publicKey := lib.NewPublicKey(publicKeyBytes)
+	publicKey := core.NewPublicKey(publicKeyBytes)
 
 	var balance uint64
 

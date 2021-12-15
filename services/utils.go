@@ -3,12 +3,13 @@ package services
 import (
 	"fmt"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/deso-protocol/core"
 	"github.com/deso-protocol/core/lib"
 	"strconv"
 	"strings"
 )
 
-func ParseCoinIdentifier(coinIdentifier *types.CoinIdentifier) (*lib.BlockHash, uint32, error) {
+func ParseCoinIdentifier(coinIdentifier *types.CoinIdentifier) (*core.BlockHash, uint32, error) {
 	utxoSpent := strings.Split(coinIdentifier.Identifier, ":")
 
 	hash := lib.MustDecodeHexBlockHash(utxoSpent[0])

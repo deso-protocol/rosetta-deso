@@ -3,7 +3,9 @@ package deso
 import (
 	"bytes"
 	"encoding/gob"
+	"github.com/deso-protocol/core"
 	"github.com/deso-protocol/core/lib"
+	"github.com/deso-protocol/core/view"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/pkg/errors"
 	"math"
@@ -33,13 +35,13 @@ func NewIndex(db *badger.DB) *Index {
 // Utxo Operations
 //
 
-func (index *Index) utxoOpsKey(blockHash *lib.BlockHash) []byte {
+func (index *Index) utxoOpsKey(blockHash *core.BlockHash) []byte {
 	prefix := append([]byte{}, PrefixUtxoOps)
 	prefix = append(prefix, blockHash.ToBytes()...)
 	return prefix
 }
 
-func (index *Index) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*lib.UtxoOperation) error {
+func (index *Index) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*view.UtxoOperation) error {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return err
@@ -56,13 +58,13 @@ func (index *Index) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*lib.UtxoOpe
 	})
 }
 
-func (index *Index) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOperation, error) {
+func (index *Index) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*view.UtxoOperation, error) {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return nil, err
 	}
 
-	var utxoOps [][]*lib.UtxoOperation
+	var utxoOps [][]*view.UtxoOperation
 
 	err = index.db.View(func(txn *badger.Txn) error {
 		utxoOpsItem, err := txn.Get(index.utxoOpsKey(blockHash))
@@ -85,7 +87,7 @@ func (index *Index) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOperation,
 // Balance Snapshots
 //
 
-func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64, balance uint64) []byte {
+func balanceSnapshotKey(isLockedBalance bool, publicKey *core.PublicKey, blockHeight uint64, balance uint64) []byte {
 	startPrefix := PrefixBalanceSnapshots
 	if isLockedBalance {
 		startPrefix = PrefixLockedBalanceSnapshots
@@ -99,13 +101,13 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHei
 }
 
 func (index *Index) PutBalanceSnapshot(
-	block *lib.MsgDeSoBlock, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
+	block *lib.MsgDeSoBlock, isLockedBalance bool, balances map[core.PublicKey]uint64) error {
 
 	height := block.Header.Height
 	return index.db.Update(func(txn *badger.Txn) error {
 		for pk, bal := range balances {
 			if err := txn.Set(balanceSnapshotKey(isLockedBalance, &pk, height, bal), []byte{}); err != nil {
-				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: " +
+				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
 					"%v pub key: %v balance: %v", height, pk, bal)
 			}
 		}
@@ -114,7 +116,7 @@ func (index *Index) PutBalanceSnapshot(
 }
 
 func GetBalanceForPublicKeyAtBlockHeightWithTxn(
-	txn *badger.Txn, isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64) uint64 {
+	txn *badger.Txn, isLockedBalance bool, publicKey *core.PublicKey, blockHeight uint64) uint64 {
 
 	opts := badger.DefaultIteratorOptions
 	opts.PrefetchValues = false
@@ -153,7 +155,7 @@ func GetBalanceForPublicKeyAtBlockHeightWithTxn(
 	return lib.DecodeUint64(keyFound[1+len(publicKey)+len(lib.EncodeUint64(blockHeight)):])
 }
 
-func (index *Index) GetBalanceSnapshot(isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64) (uint64) {
+func (index *Index) GetBalanceSnapshot(isLockedBalance bool, publicKey *core.PublicKey, blockHeight uint64) uint64 {
 	balanceFound := uint64(0)
 	index.db.View(func(txn *badger.Txn) error {
 		balanceFound = GetBalanceForPublicKeyAtBlockHeightWithTxn(
