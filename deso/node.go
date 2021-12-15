@@ -3,7 +3,9 @@ package deso
 import (
 	"flag"
 	"fmt"
+	"github.com/deso-protocol/core"
 	"github.com/deso-protocol/core/db"
+	net2 "github.com/deso-protocol/core/net"
 	"math/rand"
 	"net"
 	"path/filepath"
@@ -59,7 +61,7 @@ func getAddrsToListenOn(protocolPort int) ([]net.TCPAddr, []net.Listener) {
 	return listeningAddrs, listeners
 }
 
-func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.DeSoParams) {
+func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *core.DeSoParams) {
 	ipAddrs, err := net.LookupIP(host)
 	if err != nil {
 		glog.V(2).Info("_addSeedAddrs: DNS discovery failed on seed host (continuing on): %s %v\n", host, err)
@@ -86,8 +88,8 @@ func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.De
 			// We initialize addresses with a
 			// randomly selected "last seen time" between 3
 			// and 7 days ago similar to what bitcoind does.
-			time.Now().Add(-1*time.Second*time.Duration(lib.SecondsIn3Days+
-				db.RandInt32(lib.SecondsIn4Days))),
+			time.Now().Add(-1*time.Second*time.Duration(core.SecondsIn3Days+
+				db.RandInt32(core.SecondsIn4Days))),
 			0,
 			ip,
 			params.DefaultSocketPort)
@@ -100,7 +102,7 @@ func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.De
 	desoAddrMgr.AddAddresses(netAddrs, netAddrs[0])
 }
 
-func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSoParams) {
+func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *core.DeSoParams) {
 	MaxIterations := 99999
 
 	// This one iterates sequentially.
@@ -141,7 +143,7 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 
 type Node struct {
 	*lib.Server
-	Params       *lib.DeSoParams
+	Params       *core.DeSoParams
 	EventManager *lib.EventManager
 	Index        *Index
 	Online       bool
@@ -196,7 +198,7 @@ func (node *Node) Start() {
 	// Note: This is one of many seeds. We specify it explicitly for convenience,
 	// but not specifying it would make the code run just the same.
 	connectIPs := node.Config.ConnectIPs
-	if len(connectIPs) == 0 && node.Params.NetworkType == lib.NetworkType_MAINNET {
+	if len(connectIPs) == 0 && node.Params.NetworkType == net2.NetworkType_MAINNET {
 		connectIPs = append(connectIPs, "deso-seed-4.io")
 	}
 

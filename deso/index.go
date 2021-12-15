@@ -5,7 +5,7 @@ import (
 	"encoding/gob"
 	"github.com/deso-protocol/core"
 	"github.com/deso-protocol/core/db"
-	"github.com/deso-protocol/core/lib"
+	"github.com/deso-protocol/core/network"
 	"github.com/deso-protocol/core/view"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/pkg/errors"
@@ -42,7 +42,7 @@ func (index *Index) utxoOpsKey(blockHash *core.BlockHash) []byte {
 	return prefix
 }
 
-func (index *Index) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*view.UtxoOperation) error {
+func (index *Index) PutUtxoOps(block *net.MsgDeSoBlock, utxoOps [][]*view.UtxoOperation) error {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func (index *Index) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*view.UtxoOp
 	})
 }
 
-func (index *Index) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*view.UtxoOperation, error) {
+func (index *Index) GetUtxoOps(block *net.MsgDeSoBlock) ([][]*view.UtxoOperation, error) {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *core.PublicKey, blockHe
 }
 
 func (index *Index) PutBalanceSnapshot(
-	block *lib.MsgDeSoBlock, isLockedBalance bool, balances map[core.PublicKey]uint64) error {
+	block *net.MsgDeSoBlock, isLockedBalance bool, balances map[core.PublicKey]uint64) error {
 
 	height := block.Header.Height
 	return index.db.Update(func(txn *badger.Txn) error {

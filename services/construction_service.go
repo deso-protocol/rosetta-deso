@@ -9,6 +9,7 @@ import (
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/deso-protocol/core/lib"
+	"github.com/deso-protocol/core/network"
 	merkletree "github.com/deso-protocol/go-merkle-tree"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"math/big"
@@ -106,13 +107,13 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	fullDeSoOutputs := []*lib.DeSoOutput{}
+	fullDeSoOutputs := []*net.DeSoOutput{}
 	for _, output := range options.DeSoOutputs {
 		pkBytes, _, err := lib.Base58CheckDecode(output.PublicKey)
 		if err != nil {
 			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 		}
-		fullDeSoOutputs = append(fullDeSoOutputs, &lib.DeSoOutput{
+		fullDeSoOutputs = append(fullDeSoOutputs, &net.DeSoOutput{
 			PublicKey:   pkBytes,
 			AmountNanos: output.AmountNanos,
 		})
@@ -123,12 +124,12 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
-	txnn := &lib.MsgDeSoTxn{
+	txnn := &net.MsgDeSoTxn{
 		// The inputs will be set below.
-		TxInputs:  []*lib.DeSoInput{},
+		TxInputs:  []*net.DeSoInput{},
 		TxOutputs: fullDeSoOutputs,
 		PublicKey: fromPubKeyBytes,
-		TxnMeta:   &lib.BasicTransferMetadata{},
+		TxnMeta:   &net.BasicTransferMetadata{},
 	}
 	_, _, _, fee, err := s.node.GetBlockchain().AddInputsAndChangeToTransaction(txnn, feePerKB, s.node.GetMempool())
 	if err != nil {
@@ -216,7 +217,7 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	desoTxn := &lib.MsgDeSoTxn{}
+	desoTxn := &net.MsgDeSoTxn{}
 	if err = desoTxn.FromBytes(unsignedTxn.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
@@ -254,7 +255,7 @@ func (s *ConstructionAPIService) ConstructionHash(ctx context.Context, request *
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	txn := &lib.MsgDeSoTxn{}
+	txn := &net.MsgDeSoTxn{}
 	if err = txn.FromBytes(signedTx.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
@@ -277,7 +278,7 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	desoTxn := &lib.MsgDeSoTxn{}
+	desoTxn := &net.MsgDeSoTxn{}
 	if err = desoTxn.FromBytes(metadata.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
@@ -357,7 +358,7 @@ func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	desoTxn := &lib.MsgDeSoTxn{}
+	desoTxn := &net.MsgDeSoTxn{}
 	if err = desoTxn.FromBytes(txn.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}

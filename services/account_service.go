@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"github.com/deso-protocol/core"
+	"github.com/deso-protocol/core/network"
 	"github.com/deso-protocol/core/view"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"strconv"
@@ -108,7 +109,7 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 }
 
 func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, block *types.PartialBlockIdentifier) (*types.AccountBalanceResponse, *types.Error) {
-	var desoBlock *lib.MsgDeSoBlock
+	var desoBlock *net.MsgDeSoBlock
 	if block.Hash != nil {
 		hashBytes, err := hex.DecodeString(*block.Hash)
 		if err != nil {

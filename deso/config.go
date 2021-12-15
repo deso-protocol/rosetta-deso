@@ -2,17 +2,17 @@ package deso
 
 import (
 	"errors"
+	"github.com/deso-protocol/core"
 	"strings"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
-	"github.com/deso-protocol/core/lib"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
 	Mode                   Mode
 	Network                *types.NetworkIdentifier
-	Params                 *lib.DeSoParams
+	Params                 *core.DeSoParams
 	Currency               *types.Currency
 	GenesisBlockIdentifier *types.BlockIdentifier
 	Port                   int
@@ -36,9 +36,9 @@ func LoadConfig() (*Config, error) {
 
 	switch network := Network(strings.ToUpper(viper.GetString("network"))); network {
 	case Mainnet:
-		result.Params = &lib.DeSoMainnetParams
+		result.Params = &core.DeSoMainnetParams
 	case Testnet:
-		result.Params = &lib.DeSoTestnetParams
+		result.Params = &core.DeSoTestnetParams
 	default:
 		return nil, errors.New("unknown network")
 	}

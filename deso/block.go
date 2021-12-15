@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/deso-protocol/core"
 	"github.com/deso-protocol/core/db"
+	"github.com/deso-protocol/core/network"
 	"github.com/deso-protocol/core/view"
 	"strconv"
 
@@ -47,7 +48,7 @@ func (node *Node) CurrentBlock() *types.Block {
 	return node.GetBlockAtHeight(int64(blockchain.BlockTip().Height))
 }
 
-func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
+func (node *Node) convertBlock(block *net.MsgDeSoBlock) *types.Block {
 	blockchain := node.GetBlockchain()
 
 	blockHash, _ := block.Hash()
@@ -237,14 +238,14 @@ func newPartialAccountIdentifier(accountIdentifier *types.AccountIdentifier) par
 	}
 }
 
-func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getCreatorCoinOps(txn *net.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	// If we're not dealing with a CreatorCoin txn then we don't have any creator
 	// coin ops to add.
-	if txn.TxnMeta.GetTxnType() != lib.TxnTypeCreatorCoin {
+	if txn.TxnMeta.GetTxnType() != net.TxnTypeCreatorCoin {
 		return nil
 	}
 	// We extract the metadata and assume that we're dealing with a creator coin txn.
-	txnMeta := txn.TxnMeta.(*lib.CreatorCoinMetadataa)
+	txnMeta := txn.TxnMeta.(*net.CreatorCoinMetadataa)
 
 	var operations []*types.Operation
 
@@ -277,7 +278,7 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.U
 		Currency: &Currency,
 	}
 
-	if txnMeta.OperationType == lib.CreatorCoinOperationTypeSell {
+	if txnMeta.OperationType == net.CreatorCoinOperationTypeSell {
 		// Selling a creator coin uses the creator coin as input
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
@@ -288,7 +289,7 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.U
 			Account: account,
 			Amount:  amount,
 		})
-	} else if txnMeta.OperationType == lib.CreatorCoinOperationTypeBuy {
+	} else if txnMeta.OperationType == net.CreatorCoinOperationTypeBuy {
 		// Buying the creator coin generates an output for the creator coin
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
@@ -304,12 +305,12 @@ func (node *Node) getCreatorCoinOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.U
 	return operations
 }
 
-func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getSwapIdentityOps(txn *net.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	// We only deal with SwapIdentity txns in this function
-	if txn.TxnMeta.GetTxnType() != lib.TxnTypeSwapIdentity {
+	if txn.TxnMeta.GetTxnType() != net.TxnTypeSwapIdentity {
 		return nil
 	}
-	realTxMeta := txn.TxnMeta.(*lib.SwapIdentityMetadataa)
+	realTxMeta := txn.TxnMeta.(*net.SwapIdentityMetadataa)
 
 	// Extract the SwapIdentity op
 	var swapIdentityOp *view.UtxoOperation
@@ -400,11 +401,11 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.
 	return operations
 }
 
-func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
-	if txn.TxnMeta.GetTxnType() != lib.TxnTypeAcceptNFTBid {
+func (node *Node) getAcceptNFTOps(txn *net.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != net.TxnTypeAcceptNFTBid {
 		return nil
 	}
-	realTxnMeta := txn.TxnMeta.(*lib.AcceptNFTBidMetadata)
+	realTxnMeta := txn.TxnMeta.(*net.AcceptNFTBidMetadata)
 
 	// Extract the AcceptNFTBid op
 	var acceptNFTOp *view.UtxoOperation
@@ -490,8 +491,8 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.Utx
 	return operations
 }
 
-func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
-	if txn.TxnMeta.GetTxnType() != lib.TxnTypeUpdateProfile {
+func (node *Node) getUpdateProfileOps(txn *net.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != net.TxnTypeUpdateProfile {
 		return nil
 	}
 
@@ -533,7 +534,7 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view
 	return operations
 }
 
-func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
+func (node *Node) getImplicitOutputs(txn *net.MsgDeSoTxn, utxoOpsForTxn []*view.UtxoOperation, numOps int) []*types.Operation {
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
 
@@ -567,7 +568,7 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*view.
 	return operations
 }
 
-func (node *Node) getInputAmount(input *lib.DeSoInput, utxoOpsForTxn []*view.UtxoOperation) *types.Amount {
+func (node *Node) getInputAmount(input *net.DeSoInput, utxoOpsForTxn []*view.UtxoOperation) *types.Amount {
 	amount := types.Amount{}
 
 	// Fix for returning input amounts for genesis block transactions
