@@ -174,8 +174,8 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			ops = append(ops, acceptNftOps...)
 
 			// Add inputs for bids on Buy Now NFTs
-			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, buyNowNftBidOps...)
+			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, buyNowNftBidOps...)
 
 			// Add inputs for update profile
 			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
