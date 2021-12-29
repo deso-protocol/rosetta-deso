@@ -39,7 +39,6 @@ func LoadConfig() (*Config, error) {
 		result.Params = &lib.DeSoMainnetParams
 	case Testnet:
 		result.Params = &lib.DeSoTestnetParams
-		result.Currency.Symbol = "t" + result.Currency.Symbol
 	default:
 		return nil, errors.New("unknown network")
 	}

@@ -12,6 +12,12 @@ var (
 		ErrDeSo,
 		ErrUnableToParseIntermediateResult,
 		ErrUnableToGetCoins,
+		ErrBlockNotFound,
+		ErrMultipleSigners,
+		ErrInvalidPublicKey,
+		ErrInvalidCoin,
+		ErrInvalidTransaction,
+		ErrMultipleInputs,
 	}
 
 	ErrUnimplemented = &types.Error{
@@ -68,6 +74,11 @@ var (
 	ErrInvalidTransaction = &types.Error{
 		Code:    10,
 		Message: "Unable to parse transaction",
+	}
+
+	ErrMultipleInputs = &types.Error{
+		Code:    11,
+		Message: "A transaction can only have one input",
 	}
 )
 

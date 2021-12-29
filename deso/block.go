@@ -96,11 +96,9 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			Metadata:              metadata,
 		}
 
-		transaction.Operations = []*types.Operation{}
+		var ops []*types.Operation
 
 		for _, input := range txn.TxInputs {
-			networkIndex := int64(input.Index)
-
 			// Fetch the input amount from Rosetta Index
 			spentAmount, amountExists := spentUtxos[lib.UtxoKey{
 				TxID:  input.TxID,
@@ -117,8 +115,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index:        int64(len(transaction.Operations)),
-					NetworkIndex: &networkIndex,
+					Index: int64(len(ops)),
 				},
 
 				Account: &types.AccountIdentifier{
@@ -127,27 +124,17 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 				Amount: amount,
 
-				CoinChange: &types.CoinChange{
-					CoinIdentifier: &types.CoinIdentifier{
-						Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), input.Index),
-					},
-					CoinAction: types.CoinSpent,
-				},
-
 				Status: &SuccessStatus,
 				Type:   InputOpType,
 			}
 
-			transaction.Operations = append(transaction.Operations, op)
+			ops = append(ops, op)
 		}
 
-		for index, output := range txn.TxOutputs {
-			networkIndex := int64(index)
-
+		for _, output := range txn.TxOutputs {
 			op := &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index:        int64(len(transaction.Operations)),
-					NetworkIndex: &networkIndex,
+					Index: int64(len(ops)),
 				},
 
 				Account: &types.AccountIdentifier{
@@ -159,18 +146,11 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 					Currency: &Currency,
 				},
 
-				CoinChange: &types.CoinChange{
-					CoinIdentifier: &types.CoinIdentifier{
-						Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
-					},
-					CoinAction: types.CoinCreated,
-				},
-
 				Status: &SuccessStatus,
 				Type:   OutputOpType,
 			}
 
-			transaction.Operations = append(transaction.Operations, op)
+			ops = append(ops, op)
 		}
 
 		// Add all the special ops for specific txn types.
@@ -178,29 +158,31 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			utxoOpsForTxn := utxoOpsForBlock[txnIndexInBlock]
 
 			// Add implicit outputs from UtxoOps
-			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, implicitOutputs...)
+			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, implicitOutputs...)
 
 			// Add inputs/outputs for creator coins
-			creatorCoinOps := node.getCreatorCoinOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, creatorCoinOps...)
+			creatorCoinOps := node.getCreatorCoinOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, creatorCoinOps...)
 
 			// Add inputs/outputs for swap identity
-			swapIdentityOps := node.getSwapIdentityOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, swapIdentityOps...)
+			swapIdentityOps := node.getSwapIdentityOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, swapIdentityOps...)
 
 			// Add inputs for accept nft bid
-			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, acceptNftOps...)
+			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, acceptNftOps...)
 
 			// Add inputs for bids on Buy Now NFTs
 			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(transaction.Operations))
 			transaction.Operations = append(transaction.Operations, buyNowNftBidOps...)
 
 			// Add inputs for update profile
-			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(transaction.Operations))
-			transaction.Operations = append(transaction.Operations, updateProfileOps...)
+			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, updateProfileOps...)
 		}
+
+		transaction.Operations = squashOperations(ops)
 
 		transactions = append(transactions, transaction)
 	}
@@ -210,6 +192,49 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		ParentBlockIdentifier: parentBlockIdentifier,
 		Timestamp:             int64(block.Header.TstampSecs) * 1000,
 		Transactions:          transactions,
+	}
+}
+
+type partialAccountIdentifier struct {
+	Address    string
+	SubAddress string
+}
+
+func squashOperations(ops []*types.Operation) []*types.Operation {
+	opMap := make(map[partialAccountIdentifier]int64, len(ops))
+	var squashedOps []*types.Operation
+	nextOp := int64(0)
+
+	for _, op := range ops {
+		account := newPartialAccountIdentifier(op.Account)
+		opIndex, exists := opMap[account]
+
+		if exists {
+			existingOp := squashedOps[opIndex]
+			oldAmount, _ := strconv.ParseInt(existingOp.Amount.Value, 10, 64)
+			addAmount, _ := strconv.ParseInt(op.Amount.Value, 10, 64)
+			existingOp.Amount.Value = strconv.FormatInt(oldAmount+addAmount, 10)
+		} else {
+			opMap[account] = nextOp
+			op.OperationIdentifier.Index = nextOp
+			squashedOps = append(squashedOps, op)
+			nextOp += 1
+		}
+	}
+
+	return squashedOps
+}
+
+func newPartialAccountIdentifier(accountIdentifier *types.AccountIdentifier) partialAccountIdentifier {
+	if accountIdentifier.SubAccount != nil {
+		return partialAccountIdentifier{
+			Address:    accountIdentifier.Address,
+			SubAddress: accountIdentifier.SubAccount.Address,
+		}
+	} else {
+		return partialAccountIdentifier{
+			Address: accountIdentifier.Address,
+		}
 	}
 }
 
@@ -395,7 +420,6 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 		return nil
 	}
 
-
 	var operations []*types.Operation
 
 	royaltyAccount := &types.AccountIdentifier{
@@ -415,7 +439,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 			fmt.Printf("Error: AcceptNFTBid input was null for input: %v", input)
 			return nil
 		}
-		networkIndex := int64(input.Index)
+
 		// Track the total amount the bidder had as input
 		currentInputValue, err := strconv.ParseInt(inputAmount.Value, 10, 64)
 		if err != nil {
@@ -426,8 +450,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
-				Index:        int64(numOps),
-				NetworkIndex: &networkIndex,
+				Index: int64(numOps),
 			},
 			Type:   InputOpType,
 			Status: &SuccessStatus,
@@ -435,12 +458,6 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 				Address: lib.PkToString(acceptNFTOp.AcceptNFTBidBidderPublicKey, node.Params),
 			},
 			Amount: inputAmount,
-			CoinChange: &types.CoinChange{
-				CoinIdentifier: &types.CoinIdentifier{
-					Identifier: fmt.Sprintf("%v:%d", input.TxID.String(), networkIndex),
-				},
-				CoinAction: types.CoinSpent,
-			},
 		})
 
 		numOps += 1
@@ -586,11 +603,9 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 			utxoOp.Entry != nil && utxoOp.Entry.UtxoKey != nil &&
 			utxoOp.Entry.UtxoKey.Index >= numOutputs {
 
-			networkIndex := int64(utxoOp.Entry.UtxoKey.Index)
 			operations = append(operations, &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
-					Index:        int64(numOps),
-					NetworkIndex: &networkIndex,
+					Index: int64(numOps),
 				},
 
 				Account: &types.AccountIdentifier{
@@ -600,13 +615,6 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 				Amount: &types.Amount{
 					Value:    strconv.FormatUint(utxoOp.Entry.AmountNanos, 10),
 					Currency: &Currency,
-				},
-
-				CoinChange: &types.CoinChange{
-					CoinIdentifier: &types.CoinIdentifier{
-						Identifier: fmt.Sprintf("%v:%d", txn.Hash().String(), networkIndex),
-					},
-					CoinAction: types.CoinCreated,
 				},
 
 				Status: &SuccessStatus,
