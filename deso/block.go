@@ -174,7 +174,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			ops = append(ops, acceptNftOps...)
 
 			// Add inputs for bids on Buy Now NFTs
-			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(transaction.Operations))
+			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(ops))
 			transaction.Operations = append(transaction.Operations, buyNowNftBidOps...)
 
 			// Add inputs for update profile
@@ -488,6 +488,29 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 		numOps += 1
 	}
 
+	// Add outputs for each additional creator coin royalty
+	for _, publicKeyRoyaltyPair := range acceptNFTOp.AcceptNFTBidAdditionalCoinRoyalties {
+		coinRoyaltyAccount := &types.AccountIdentifier{
+			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, node.Params),
+			SubAccount: &types.SubAccountIdentifier{
+				Address: CreatorCoin,
+			},
+		}
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: coinRoyaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
 	return operations
 }
 
@@ -542,6 +565,29 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 			Account: royaltyAccount,
 			Amount: &types.Amount{
 				Value:    strconv.FormatUint(nftBidOp.NFTBidCreatorRoyaltyNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
+	// Add outputs for each additional creator coin royalty
+	for _, publicKeyRoyaltyPair := range nftBidOp.NFTBidAdditionalCoinRoyalties {
+		coinRoyaltyAccount := &types.AccountIdentifier{
+			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, node.Params),
+			SubAccount: &types.SubAccountIdentifier{
+				Address: CreatorCoin,
+			},
+		}
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: coinRoyaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
 				Currency: &Currency,
 			},
 		})
