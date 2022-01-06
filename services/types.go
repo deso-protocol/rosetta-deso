@@ -11,7 +11,7 @@ type preprocessOptions struct {
 
 	// Allow legacy manual selection of UTXOs
 	LegacyUTXOSelection bool         `json:"legacy_utxo_selection"` // Deprecated
-	DeSoInputs          []*desoInput `json:"deso_inputs"`
+	DeSoInputs          []*desoInput `json:"deso_inputs"`           // Deprecated
 }
 
 type desoOutput struct {
