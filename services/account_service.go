@@ -77,12 +77,12 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 	} else if account.SubAccount.Address == deso.CreatorCoin {
 		dbProfileEntry := dbView.GetProfileEntryForPublicKey(publicKeyBytes)
 		if dbProfileEntry != nil {
-			dbBalance = dbProfileEntry.CoinEntry.DeSoLockedNanos
+			dbBalance = dbProfileEntry.CreatorCoinEntry.DeSoLockedNanos
 		}
 
 		mempoolProfileEntry := mempoolView.GetProfileEntryForPublicKey(publicKeyBytes)
 		if mempoolProfileEntry != nil {
-			mempoolBalance = mempoolProfileEntry.CoinEntry.DeSoLockedNanos
+			mempoolBalance = mempoolProfileEntry.CreatorCoinEntry.DeSoLockedNanos
 		}
 	}
 

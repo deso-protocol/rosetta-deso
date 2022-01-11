@@ -554,8 +554,7 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	// TODO: This if statement is needed temporarily to fix a bug whereby
 	// NFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
 	// was zero due to this check in consensus.
-	if nftBidOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos &&
-		nftBidOp.NFTBidCreatorRoyaltyNanos > 0 {
+	if nftBidOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos {
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: int64(numOps),
