@@ -472,7 +472,8 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 	// TODO: This if statement is needed temporarily to fix a bug whereby
 	// AcceptNFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
 	// was zero due to this check in consensus.
-	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos {
+	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos &&
+		acceptNFTOp.AcceptNFTBidCreatorRoyaltyNanos > 0 {
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: int64(numOps),
@@ -532,7 +533,8 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	// TODO: This if statement is needed temporarily to fix a bug whereby
 	// NFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
 	// was zero due to this check in consensus.
-	if nftBidOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos {
+	if nftBidOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos &&
+		nftBidOp.NFTBidCreatorRoyaltyNanos > 0 {
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: int64(numOps),
