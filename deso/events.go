@@ -28,7 +28,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		balanceToSet := uint64(0)
 		profileFound := event.UtxoView.GetProfileEntryForPublicKey(pubKey[:])
 		if profileFound != nil && !profileFound.IsDeleted() {
-			balanceToSet = profileFound.DeSoLockedNanos
+			balanceToSet = profileFound.CreatorCoinEntry.DeSoLockedNanos
 		}
 		lockedBalances[*lib.NewPublicKey(pubKey[:])] = balanceToSet
 	}
@@ -38,7 +38,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	for _, profile := range profileEntries {
 		balanceToPut := uint64(0)
 		if !profile.IsDeleted() {
-			balanceToPut = profile.DeSoLockedNanos
+			balanceToPut = profile.CreatorCoinEntry.DeSoLockedNanos
 		}
 		lockedBalances[*lib.NewPublicKey(profile.PublicKey)] = balanceToPut
 	}
