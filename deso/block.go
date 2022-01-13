@@ -468,7 +468,7 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 	// TODO: This if statement is needed temporarily to fix a bug whereby
 	// AcceptNFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
 	// was zero due to this check in consensus.
-	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos >= node.Params.CreatorCoinAutoSellThresholdNanos {
+	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos {
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: int64(numOps),
