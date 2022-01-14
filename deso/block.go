@@ -489,6 +489,32 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 		numOps += 1
 	}
 
+	// Add outputs for each additional creator coin royalty
+	for _, publicKeyRoyaltyPair := range acceptNFTOp.AcceptNFTBidAdditionalCoinRoyalties {
+		if publicKeyRoyaltyPair.RoyaltyAmountNanos == 0 {
+			continue
+		}
+		coinRoyaltyAccount := &types.AccountIdentifier{
+			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, node.Params),
+			SubAccount: &types.SubAccountIdentifier{
+				Address: CreatorCoin,
+			},
+		}
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: coinRoyaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
 	return operations
 }
 
@@ -510,14 +536,9 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 		return nil
 	}
 
-	// We only care about NFT bids that generate creator royalties. This only occurs for NFT bids on Buy Now NFTs.
-	// Only NFT bids on Buy Now NFTs will have NFTBidcreatorRoyaltyNanos > 0. Even in the case that an NFT is a buy now,
-	// it is possible that there are no royalties to the creator coin generated. In this situation, it is okay to exit
-	// early since there are not output to add.
-	if nftBidOp.NFTBidCreatorRoyaltyNanos == 0 {
-		return nil
-	}
-
+	// We only care about NFT bids that generate creator royalties. This only occurs for NFT bids on Buy Now NFTs that
+	// exceed the Buy Now Price. Only NFT bids that exceed the Buy Now Price on Buy Now NFTs will have
+	// NFTBidCreatorRoyaltyNanos > 0.
 	var operations []*types.Operation
 
 	royaltyAccount := &types.AccountIdentifier{
@@ -544,6 +565,32 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 			Account: royaltyAccount,
 			Amount: &types.Amount{
 				Value:    strconv.FormatUint(nftBidOp.NFTBidCreatorRoyaltyNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
+	// Add outputs for each additional creator coin royalty
+	for _, publicKeyRoyaltyPair := range nftBidOp.NFTBidAdditionalCoinRoyalties {
+		if publicKeyRoyaltyPair.RoyaltyAmountNanos == 0 {
+			continue
+		}
+		coinRoyaltyAccount := &types.AccountIdentifier{
+			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, node.Params),
+			SubAccount: &types.SubAccountIdentifier{
+				Address: CreatorCoin,
+			},
+		}
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: coinRoyaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
 				Currency: &Currency,
 			},
 		})
