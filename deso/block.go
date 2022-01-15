@@ -401,6 +401,39 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	return operations
 }
 
+func addNFTRoyalties(ops []*types.Operation, numOps int,
+	royalties []*lib.PublicKeyRoyaltyPair, params *lib.DeSoParams) (
+	_ops []*types.Operation, _numOps int) {
+
+	// Add outputs for each additional creator coin royalty
+	for _, publicKeyRoyaltyPair := range royalties {
+		if publicKeyRoyaltyPair.RoyaltyAmountNanos == 0 {
+			continue
+		}
+		coinRoyaltyAccount := &types.AccountIdentifier{
+			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, params),
+			SubAccount: &types.SubAccountIdentifier{
+				Address: CreatorCoin,
+			},
+		}
+		ops = append(ops, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: coinRoyaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
+	return ops, numOps
+}
+
 func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
 	if txn.TxnMeta.GetTxnType() != lib.TxnTypeAcceptNFTBid {
 		return nil
@@ -489,31 +522,8 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 		numOps += 1
 	}
 
-	// Add outputs for each additional creator coin royalty
-	for _, publicKeyRoyaltyPair := range acceptNFTOp.AcceptNFTBidAdditionalCoinRoyalties {
-		if publicKeyRoyaltyPair.RoyaltyAmountNanos == 0 {
-			continue
-		}
-		coinRoyaltyAccount := &types.AccountIdentifier{
-			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, node.Params),
-			SubAccount: &types.SubAccountIdentifier{
-				Address: CreatorCoin,
-			},
-		}
-		operations = append(operations, &types.Operation{
-			OperationIdentifier: &types.OperationIdentifier{
-				Index: int64(numOps),
-			},
-			Type:    OutputOpType,
-			Status:  &SuccessStatus,
-			Account: coinRoyaltyAccount,
-			Amount: &types.Amount{
-				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
-				Currency: &Currency,
-			},
-		})
-		numOps += 1
-	}
+	operations, numOps = addNFTRoyalties(
+		operations, numOps, acceptNFTOp.AcceptNFTBidAdditionalCoinRoyalties, node.Params)
 
 	return operations
 }
@@ -571,31 +581,8 @@ func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 		numOps += 1
 	}
 
-	// Add outputs for each additional creator coin royalty
-	for _, publicKeyRoyaltyPair := range nftBidOp.NFTBidAdditionalCoinRoyalties {
-		if publicKeyRoyaltyPair.RoyaltyAmountNanos == 0 {
-			continue
-		}
-		coinRoyaltyAccount := &types.AccountIdentifier{
-			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, node.Params),
-			SubAccount: &types.SubAccountIdentifier{
-				Address: CreatorCoin,
-			},
-		}
-		operations = append(operations, &types.Operation{
-			OperationIdentifier: &types.OperationIdentifier{
-				Index: int64(numOps),
-			},
-			Type:    OutputOpType,
-			Status:  &SuccessStatus,
-			Account: coinRoyaltyAccount,
-			Amount: &types.Amount{
-				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
-				Currency: &Currency,
-			},
-		})
-		numOps += 1
-	}
+	operations, numOps = addNFTRoyalties(
+		operations, numOps, nftBidOp.NFTBidAdditionalCoinRoyalties, node.Params)
 
 	return operations
 }
