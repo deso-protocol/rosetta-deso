@@ -230,15 +230,16 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 	}
 
 	// We should only have one input with the balance model
-	if len(inputAmounts) != 1 {
-		return nil, wrapErr(ErrInvalidTransaction, fmt.Errorf("Txn must have exactly one input but found %v", len(inputAmounts)))
-	}
+	// TODO: This check is disabled to support legacy utxo selection
+	//if len(inputAmounts) != 1 {
+	//	return nil, wrapErr(ErrInvalidTransaction, fmt.Errorf("Txn must have exactly one input but found %v", len(inputAmounts)))
+	//}
 
 	unsignedBytes := merkletree.Sha256DoubleHash(desoTxnBytes)
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction: desoTxnBytes,
-		InputAmount: inputAmounts[0],
+		Transaction:  desoTxnBytes,
+		InputAmounts: inputAmounts,
 	})
 
 	return &types.ConstructionPayloadsResponse{
@@ -282,8 +283,8 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 	}
 
 	signedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction: signedTxnBytes,
-		InputAmount: unsignedTxn.InputAmount,
+		Transaction:  signedTxnBytes,
+		InputAmounts: unsignedTxn.InputAmounts,
 	})
 
 	return &types.ConstructionCombineResponse{
@@ -334,21 +335,24 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		Address: lib.Base58CheckEncode(desoTxn.PublicKey, false, s.node.Params),
 	}
 
-	operations := []*types.Operation{
-		{
+	numOps := int64(0)
+	var operations []*types.Operation
+
+	for _, inputAmount := range metadata.InputAmounts {
+		operations = append(operations, &types.Operation{
 			Type: deso.InputOpType,
 			OperationIdentifier: &types.OperationIdentifier{
-				Index: 0,
+				Index: numOps,
 			},
 			Account: signer,
 			Amount: &types.Amount{
-				Value:    metadata.InputAmount,
+				Value:    inputAmount,
 				Currency: s.config.Currency,
 			},
-		},
+		})
+		numOps += 1
 	}
 
-	numOps := int64(1)
 	for _, output := range desoTxn.TxOutputs {
 		// Skip the change output
 		if reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
