@@ -189,8 +189,9 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	metadata, err := types.MarshalMap(&constructionMetadata{
-		FeePerKB:         feePerKB,
-		DeSoSampleTxnHex: hex.EncodeToString(desoTxnBytes),
+		FeePerKB:            feePerKB,
+		DeSoSampleTxnHex:    hex.EncodeToString(desoTxnBytes),
+		LegacyUTXOSelection: options.LegacyUTXOSelection,
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -238,8 +239,9 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 	unsignedBytes := merkletree.Sha256DoubleHash(desoTxnBytes)
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:  desoTxnBytes,
-		InputAmounts: inputAmounts,
+		Transaction:         desoTxnBytes,
+		InputAmounts:        inputAmounts,
+		LegacyUTXOSelection: metadata.LegacyUTXOSelection,
 	})
 
 	return &types.ConstructionPayloadsResponse{
@@ -283,8 +285,9 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 	}
 
 	signedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:  signedTxnBytes,
-		InputAmounts: unsignedTxn.InputAmounts,
+		Transaction:         signedTxnBytes,
+		InputAmounts:        unsignedTxn.InputAmounts,
+		LegacyUTXOSelection: unsignedTxn.LegacyUTXOSelection,
 	})
 
 	return &types.ConstructionCombineResponse{
@@ -354,8 +357,8 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 	}
 
 	for _, output := range desoTxn.TxOutputs {
-		// Skip the change output
-		if reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
+		// Skip the change output when NOT using legacy utxo selection
+		if !metadata.LegacyUTXOSelection && reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
 			continue
 		}
 

@@ -33,11 +33,17 @@ type constructionMetadata struct {
 	// on this transaction are also used in the offline portion in order to construct the
 	// final transaction.
 	DeSoSampleTxnHex string `json:"deso_sample_txn_hex"`
+
+	// Allow legacy manual selection of UTXOs
+	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
 }
 
 type transactionMetadata struct {
 	Transaction  []byte   `json:"transaction"`
 	InputAmounts []string `json:"input_amount"`
+
+	// Allow legacy manual selection of UTXOs
+	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
 }
 
 type amountMetadata struct {
