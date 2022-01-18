@@ -49,3 +49,7 @@ type transactionMetadata struct {
 type amountMetadata struct {
 	Confirmations uint64 `json:"confirmations"`
 }
+
+type amountMetadata struct {
+	Confirmations uint64 `json:"confirmations"`
+}
