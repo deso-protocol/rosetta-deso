@@ -150,10 +150,8 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		PublicKey: fromPubKeyBytes,
 		TxnMeta:   &lib.BasicTransferMetadata{},
 	}
-	_, _, _, fee, err := s.node.GetBlockchain().AddInputsAndChangeToTransaction(txn, feePerKB, s.node.GetMempool())
-	if err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
-	}
+
+	var fee uint64
 
 	// Support legacy utxo selection
 	if options.LegacyUTXOSelection {
@@ -178,6 +176,11 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		// Override fee calculation
 		txnSize := uint64(len(txnBytes) + MaxDERSigLen + FeeByteBuffer)
 		fee = feePerKB * txnSize / BytesPerKb
+	} else {
+		_, _, _, fee, err = s.node.GetBlockchain().AddInputsAndChangeToTransaction(txn, feePerKB, s.node.GetMempool())
+		if err != nil {
+			return nil, wrapErr(ErrInvalidTransaction, err)
+		}
 	}
 
 	desoTxnBytes, err := txn.ToBytes(true)
