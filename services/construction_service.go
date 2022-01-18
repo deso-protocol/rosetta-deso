@@ -16,6 +16,16 @@ import (
 	"strconv"
 )
 
+const (
+	BytesPerKb   = 1000
+	MaxDERSigLen = 74
+
+	// FeeByteBuffer adds a byte buffer to the length of the transaction when calculating the suggested fee.
+	// We need this buffer because the size of the transaction can increase by a few bytes after
+	// the preprocess step and before the combine step
+	FeeByteBuffer = 2
+)
+
 type ConstructionAPIService struct {
 	config *deso.Config
 	node   *deso.Node
@@ -48,6 +58,17 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 		if op.Type == deso.InputOpType {
 			// Add the account identifier to our map
 			inputPubKeysFoundMap[op.Account.Address] = true
+
+			txId, txnIndex, err := ParseCoinIdentifier(op.CoinChange.CoinIdentifier)
+			if err != nil {
+				return nil, wrapErr(ErrInvalidCoin, err)
+			}
+
+			// Include the inputs in case we use legacy utxo selection
+			optionsObj.DeSoInputs = append(optionsObj.DeSoInputs, &desoInput{
+				TxHex: hex.EncodeToString(txId.ToBytes()),
+				Index: txnIndex,
+			})
 		} else if op.Type == deso.OutputOpType {
 			// Parse the amount of this output
 			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
@@ -59,7 +80,6 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 				AmountNanos: amount,
 			})
 		}
-
 	}
 
 	// Exactly one public key is required, otherwise that's an error.
@@ -70,8 +90,8 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 	}
 
 	// Set the from public key on the options
-	for kk, _ := range inputPubKeysFoundMap {
-		optionsObj.FromPublicKey = kk
+	for publicKey := range inputPubKeysFoundMap {
+		optionsObj.FromPublicKey = publicKey
 		break
 	}
 
@@ -123,26 +143,55 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
-	txnn := &lib.MsgDeSoTxn{
+	txn := &lib.MsgDeSoTxn{
 		// The inputs will be set below.
 		TxInputs:  []*lib.DeSoInput{},
 		TxOutputs: fullDeSoOutputs,
 		PublicKey: fromPubKeyBytes,
 		TxnMeta:   &lib.BasicTransferMetadata{},
 	}
-	_, _, _, fee, err := s.node.GetBlockchain().AddInputsAndChangeToTransaction(txnn, feePerKB, s.node.GetMempool())
-	if err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
+
+	var fee uint64
+
+	// Support legacy utxo selection
+	if options.LegacyUTXOSelection {
+		txn.TxInputs = []*lib.DeSoInput{}
+		for _, input := range options.DeSoInputs {
+			txId, err := hex.DecodeString(input.TxHex)
+			if err != nil {
+				return nil, wrapErr(ErrInvalidTransaction, err)
+			}
+
+			txn.TxInputs = append(txn.TxInputs, &lib.DeSoInput{
+				TxID:  *lib.NewBlockHash(txId),
+				Index: input.Index,
+			})
+		}
+
+		txnBytes, err := txn.ToBytes(true)
+		if err != nil {
+			return nil, wrapErr(ErrInvalidTransaction, err)
+		}
+
+		// Override fee calculation
+		txnSize := uint64(len(txnBytes) + MaxDERSigLen + FeeByteBuffer)
+		fee = feePerKB * txnSize / BytesPerKb
+	} else {
+		_, _, _, fee, err = s.node.GetBlockchain().AddInputsAndChangeToTransaction(txn, feePerKB, s.node.GetMempool())
+		if err != nil {
+			return nil, wrapErr(ErrInvalidTransaction, err)
+		}
 	}
 
-	desoTxnBytes, err := txnn.ToBytes(true)
+	desoTxnBytes, err := txn.ToBytes(true)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	metadata, err := types.MarshalMap(&constructionMetadata{
-		FeePerKB:         feePerKB,
-		DeSoSampleTxnHex: hex.EncodeToString(desoTxnBytes),
+		FeePerKB:            feePerKB,
+		DeSoSampleTxnHex:    hex.EncodeToString(desoTxnBytes),
+		LegacyUTXOSelection: options.LegacyUTXOSelection,
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -182,15 +231,17 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 	}
 
 	// We should only have one input with the balance model
-	if len(inputAmounts) != 1 {
-		return nil, wrapErr(ErrInvalidTransaction, fmt.Errorf("Txn must have exactly one input but found %v", len(inputAmounts)))
-	}
+	// TODO: This check is disabled to support legacy utxo selection
+	//if len(inputAmounts) != 1 {
+	//	return nil, wrapErr(ErrInvalidTransaction, fmt.Errorf("Txn must have exactly one input but found %v", len(inputAmounts)))
+	//}
 
 	unsignedBytes := merkletree.Sha256DoubleHash(desoTxnBytes)
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction: desoTxnBytes,
-		InputAmount: inputAmounts[0],
+		Transaction:         desoTxnBytes,
+		InputAmounts:        inputAmounts,
+		LegacyUTXOSelection: metadata.LegacyUTXOSelection,
 	})
 
 	return &types.ConstructionPayloadsResponse{
@@ -234,8 +285,9 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 	}
 
 	signedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction: signedTxnBytes,
-		InputAmount: unsignedTxn.InputAmount,
+		Transaction:         signedTxnBytes,
+		InputAmounts:        unsignedTxn.InputAmounts,
+		LegacyUTXOSelection: unsignedTxn.LegacyUTXOSelection,
 	})
 
 	return &types.ConstructionCombineResponse{
@@ -286,24 +338,27 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		Address: lib.Base58CheckEncode(desoTxn.PublicKey, false, s.node.Params),
 	}
 
-	operations := []*types.Operation{
-		{
+	numOps := int64(0)
+	var operations []*types.Operation
+
+	for _, inputAmount := range metadata.InputAmounts {
+		operations = append(operations, &types.Operation{
 			Type: deso.InputOpType,
 			OperationIdentifier: &types.OperationIdentifier{
-				Index: 0,
+				Index: numOps,
 			},
 			Account: signer,
 			Amount: &types.Amount{
-				Value:    metadata.InputAmount,
+				Value:    inputAmount,
 				Currency: s.config.Currency,
 			},
-		},
+		})
+		numOps += 1
 	}
 
-	numOps := int64(1)
 	for _, output := range desoTxn.TxOutputs {
-		// Skip the change output
-		if reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
+		// Skip the change output when NOT using legacy utxo selection
+		if !metadata.LegacyUTXOSelection && reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
 			continue
 		}
 
