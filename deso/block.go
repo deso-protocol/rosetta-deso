@@ -173,6 +173,10 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, acceptNftOps...)
 
+			// Add inputs for bids on Buy Now NFTs
+			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, buyNowNftBidOps...)
+
 			// Add inputs for update profile
 			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, updateProfileOps...)
@@ -397,6 +401,39 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 	return operations
 }
 
+func addNFTRoyalties(ops []*types.Operation, numOps int,
+	royalties []*lib.PublicKeyRoyaltyPair, params *lib.DeSoParams) (
+	_ops []*types.Operation, _numOps int) {
+
+	// Add outputs for each additional creator coin royalty
+	for _, publicKeyRoyaltyPair := range royalties {
+		if publicKeyRoyaltyPair.RoyaltyAmountNanos == 0 {
+			continue
+		}
+		coinRoyaltyAccount := &types.AccountIdentifier{
+			Address: lib.PkToString(publicKeyRoyaltyPair.PublicKey, params),
+			SubAccount: &types.SubAccountIdentifier{
+				Address: CreatorCoin,
+			},
+		}
+		ops = append(ops, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: coinRoyaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(publicKeyRoyaltyPair.RoyaltyAmountNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
+	return ops, numOps
+}
+
 func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
 	if txn.TxnMeta.GetTxnType() != lib.TxnTypeAcceptNFTBid {
 		return nil
@@ -468,7 +505,8 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 	// TODO: This if statement is needed temporarily to fix a bug whereby
 	// AcceptNFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
 	// was zero due to this check in consensus.
-	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos {
+	if acceptNFTOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos &&
+		acceptNFTOp.AcceptNFTBidCreatorRoyaltyNanos > 0 {
 		operations = append(operations, &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: int64(numOps),
@@ -483,6 +521,70 @@ func (node *Node) getAcceptNFTOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.Utxo
 		})
 		numOps += 1
 	}
+
+	operations, numOps = addNFTRoyalties(
+		operations, numOps, acceptNFTOp.AcceptNFTBidAdditionalCoinRoyalties, node.Params)
+
+	return operations
+}
+
+func (node *Node) getBuyNowNFTBidOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeNFTBid {
+		return nil
+	}
+
+	// Extract the NFTBid op
+	var nftBidOp *lib.UtxoOperation
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeNFTBid {
+			nftBidOp = utxoOp
+			break
+		}
+	}
+	if nftBidOp == nil {
+		fmt.Printf("Error: Missing UtxoOperation for NFTBid txn: %v\n", txn.Hash())
+		return nil
+	}
+
+	// We only care about NFT bids that generate creator royalties. This only occurs for NFT bids on Buy Now NFTs that
+	// exceed the Buy Now Price. Only NFT bids that exceed the Buy Now Price on Buy Now NFTs will have
+	// NFTBidCreatorRoyaltyNanos > 0.
+	var operations []*types.Operation
+
+	royaltyAccount := &types.AccountIdentifier{
+		Address: lib.PkToString(nftBidOp.NFTBidCreatorPublicKey, node.Params),
+		SubAccount: &types.SubAccountIdentifier{
+			Address: CreatorCoin,
+		},
+	}
+
+	// Add an output representing the creator coin royalty only if there
+	// are enough creator coins in circulation
+	//
+	// TODO: This if statement is needed temporarily to fix a bug whereby
+	// NFTBidCreatorRoyaltyNanos is non-zero even when the royalty given
+	// was zero due to this check in consensus.
+	if nftBidOp.PrevCoinEntry != nil &&
+		nftBidOp.PrevCoinEntry.CoinsInCirculationNanos.Uint64() >= node.Params.CreatorCoinAutoSellThresholdNanos &&
+		nftBidOp.NFTBidCreatorRoyaltyNanos > 0 {
+
+		operations = append(operations, &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(numOps),
+			},
+			Type:    OutputOpType,
+			Status:  &SuccessStatus,
+			Account: royaltyAccount,
+			Amount: &types.Amount{
+				Value:    strconv.FormatUint(nftBidOp.NFTBidCreatorRoyaltyNanos, 10),
+				Currency: &Currency,
+			},
+		})
+		numOps += 1
+	}
+
+	operations, numOps = addNFTRoyalties(
+		operations, numOps, nftBidOp.NFTBidAdditionalCoinRoyalties, node.Params)
 
 	return operations
 }
