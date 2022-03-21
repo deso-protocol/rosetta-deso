@@ -140,6 +140,7 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 
 type Node struct {
 	*lib.Server
+	Snapshot     *lib.Snapshot
 	Params       *lib.DeSoParams
 	EventManager *lib.EventManager
 	Index        *Index
@@ -186,7 +187,7 @@ func (node *Node) Start() {
 	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
 	opts := badger.DefaultOptions(dbDir)
 	opts.ValueDir = dbDir
-	opts.MemTableSize = 1024 << 20
+	opts.MemTableSize = 8000000000 // 8gb
 	db, err := badger.Open(opts)
 	if err != nil {
 		panic(err)
@@ -203,7 +204,7 @@ func (node *Node) Start() {
 	rosettaIndexDir := filepath.Join(node.Config.DataDirectory, "index")
 	rosettaIndexOpts := badger.DefaultOptions(rosettaIndexDir)
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
-	rosettaIndexOpts.MemTableSize = 1024 << 20
+	rosettaIndexOpts.MemTableSize = 8000000000 // 8gb
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
 	node.Index = NewIndex(rosettaIndex)
 
@@ -211,6 +212,7 @@ func (node *Node) Start() {
 	node.EventManager = lib.NewEventManager()
 	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
 	node.EventManager.OnBlockConnected(node.handleBlockConnected)
+	node.EventManager.OnSnapshotCompleted(node.handleSnapshotCompleted)
 
 	minerCount := uint64(1)
 	maxBlockTemplatesToCache := uint64(100)
@@ -224,6 +226,17 @@ func (node *Node) Start() {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
+	// Setup snapshot
+	var snapshot *lib.Snapshot
+	if node.Config.HyperSync {
+		snapshot, err = lib.NewSnapshot(node.Config.DataDirectory, lib.SnapshotBlockHeightPeriod,
+			false, false)
+		if err != nil {
+			panic(err)
+		}
+		node.Snapshot = snapshot
+	}
+
 	node.Server, err = lib.NewServer(
 		node.Config.Params,
 		listeners,
@@ -231,11 +244,15 @@ func (node *Node) Start() {
 		connectIPs,
 		db,
 		nil,
+		snapshot,
 		targetOutboundPeers,
 		maxInboundPeers,
 		node.Config.MinerPublicKeys,
 		minerCount,
 		true,
+		node.Config.HyperSync,
+		node.Config.DisableSlowSync,
+		node.Config.MaxSyncBlockHeight,
 		rateLimitFeerateNanosPerKB,
 		MinFeeRateNanosPerKB,
 		stallTimeoutSeconds,

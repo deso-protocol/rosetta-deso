@@ -13,10 +13,17 @@ const (
 	PrefixUtxoOps = byte(0)
 
 	// Public key balances
+	// <prefix 1 byte, public key 33 bytes, block height 8 bytes, balance 8 bytes> -> <>
 	PrefixBalanceSnapshots = byte(1)
 
 	// Creator coins
+	// <prefix 1 byte, public key 33 bytes, block height 8 bytes, balance 8 bytes> -> <>
 	PrefixLockedBalanceSnapshots = byte(2)
+
+	// Fake genesis balances we use to initialize Rosetta when running hypersync.
+	// See comments in events.go for more details.
+	// <prefix, publicKey 33 bytes, isLocked 1 byte> -> <uint64>
+	PrefixHypersyncGenesisBalanceSnapshot = byte(3)
 )
 
 type Index struct {
@@ -98,14 +105,59 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHei
 	return prefix
 }
 
-func (index *Index) PutBalanceSnapshot(
-	block *lib.MsgDeSoBlock, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
+func (index *Index) GetHypersyncBalanceSnapshot() (
+	_balances map[lib.PublicKey]uint64,
+	_lockedBalances map[lib.PublicKey]uint64) {
 
-	height := block.Header.Height
+	balances := make(map[lib.PublicKey]uint64)
+	lockedBalances := make(map[lib.PublicKey]uint64)
+
+	publicKeysWithIsLocked, balBytesList := lib.EnumerateKeysForPrefix(
+		index.db, []byte{PrefixHypersyncGenesisBalanceSnapshot})
+	for ii, kk := range publicKeysWithIsLocked {
+		pkBytes := kk[2:]
+		bal := lib.DecodeUint64(balBytesList[ii])
+
+		isLockedByte := kk[1]
+		if isLockedByte == byte(0) {
+			balances[*lib.NewPublicKey(pkBytes)] = bal
+		} else {
+			lockedBalances[*lib.NewPublicKey(pkBytes)] = bal
+		}
+	}
+
+	return balances, lockedBalances
+}
+
+func (index *Index) PutHypersyncBalanceSnapshot(
+	isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
+
+	isLockedPrefix := byte(0)
+	if isLockedBalance {
+		isLockedPrefix = byte(1)
+	}
+
+	return index.db.Update(func(txn *badger.Txn) error {
+		for pk, bal := range balances {
+			pubKeyAndIsLocked := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
+			pubKeyAndIsLocked = append(pubKeyAndIsLocked, isLockedPrefix)
+			pubKeyAndIsLocked = append(pubKeyAndIsLocked, pk[:]...)
+			if err := txn.Set(pubKeyAndIsLocked, lib.EncodeUint64(bal)); err != nil {
+				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
+					"%v pub key: %v balance: %v", isLockedPrefix, pk, bal)
+			}
+		}
+		return nil
+	})
+}
+
+func (index *Index) PutBalanceSnapshot(
+	height uint64, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
+
 	return index.db.Update(func(txn *badger.Txn) error {
 		for pk, bal := range balances {
 			if err := txn.Set(balanceSnapshotKey(isLockedBalance, &pk, height, bal), []byte{}); err != nil {
-				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: " +
+				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
 					"%v pub key: %v balance: %v", height, pk, bal)
 			}
 		}
@@ -153,7 +205,7 @@ func GetBalanceForPublicKeyAtBlockHeightWithTxn(
 	return lib.DecodeUint64(keyFound[1+len(publicKey)+len(lib.EncodeUint64(blockHeight)):])
 }
 
-func (index *Index) GetBalanceSnapshot(isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64) (uint64) {
+func (index *Index) GetBalanceSnapshot(isLockedBalance bool, publicKey *lib.PublicKey, blockHeight uint64) uint64 {
 	balanceFound := uint64(0)
 	index.db.View(func(txn *badger.Txn) error {
 		balanceFound = GetBalanceForPublicKeyAtBlockHeightWithTxn(

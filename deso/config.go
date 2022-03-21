@@ -21,6 +21,9 @@ type Config struct {
 	MinerPublicKeys        []string
 	Regtest                bool
 	ConnectIPs             []string
+	HyperSync              bool
+	DisableSlowSync        bool
+	MaxSyncBlockHeight     uint32
 }
 
 func LoadConfig() (*Config, error) {
@@ -58,6 +61,10 @@ func LoadConfig() (*Config, error) {
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
 	result.Regtest = viper.GetBool("regtest")
 	result.ConnectIPs = viper.GetStringSlice("connect-ips")
+
+	result.HyperSync = viper.GetBool("hypersync")
+	result.DisableSlowSync = viper.GetBool("disable-slow-sync")
+	result.MaxSyncBlockHeight = viper.GetUint32("max-sync-block-height")
 
 	return &result, nil
 }

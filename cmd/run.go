@@ -79,6 +79,14 @@ func init() {
 	runCmd.PersistentFlags().Bool("regtest", false, "don't connect to dorsey testnet, mine and spend blocks instantly")
 	runCmd.PersistentFlags().StringSlice("connect-ips", []string{}, "list of addresses to only connect to")
 
+	runCmd.PersistentFlags().Bool("hypersync", true, "Build ancestral records for hypersync and "+
+		"attempt to sync from other nodes using hypersync as well, if they support it")
+	runCmd.PersistentFlags().Bool("disable-slow-sync", false, "When enabled, the node will refuse "+
+		"to sync with any method other than Hypersync. Note that it is possible to have --hypersync enabled "+
+		"with this value set to false, in which case a node may try to sync by downloading and connecting historical txns "+
+		"if the first node it encounters does not support hypersync")
+	runCmd.PersistentFlags().Uint32("max-sync-block-height", 0, "Max sync block height")
+
 	runCmd.PersistentFlags().VisitAll(func(flag *pflag.Flag) {
 		viper.BindPFlag(flag.Name, flag)
 	})

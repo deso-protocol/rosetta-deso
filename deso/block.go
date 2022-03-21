@@ -44,28 +44,7 @@ func (node *Node) CurrentBlock() *types.Block {
 	return node.GetBlockAtHeight(int64(blockchain.BlockTip().Height))
 }
 
-func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
-	blockchain := node.GetBlockchain()
-
-	blockHash, _ := block.Hash()
-
-	blockIdentifier := &types.BlockIdentifier{
-		Index: int64(block.Header.Height),
-		Hash:  blockHash.String(),
-	}
-
-	var parentBlockIdentifier *types.BlockIdentifier
-	if block.Header.Height == 0 {
-		parentBlockIdentifier = blockIdentifier
-	} else {
-		parentBlock := blockchain.GetBlock(block.Header.PrevBlockHash)
-		parentBlockHash, _ := parentBlock.Hash()
-		parentBlockIdentifier = &types.BlockIdentifier{
-			Index: int64(parentBlock.Header.Height),
-			Hash:  parentBlockHash.String(),
-		}
-	}
-
+func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*types.Transaction {
 	transactions := []*types.Transaction{}
 
 	// Fetch the Utxo ops for this block
@@ -187,11 +166,121 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		transactions = append(transactions, transaction)
 	}
 
+	return transactions
+}
+
+func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
+	blockchain := node.GetBlockchain()
+
+	blockHash, _ := block.Hash()
+
+	blockIdentifier := &types.BlockIdentifier{
+		Index: int64(block.Header.Height),
+		Hash:  blockHash.String(),
+	}
+
+	height := block.Header.Height
+	var parentBlockIdentifier *types.BlockIdentifier
+	if height == 0 {
+		parentBlockIdentifier = blockIdentifier
+	} else {
+		parentBlock := blockchain.GetBlock(block.Header.PrevBlockHash)
+		parentBlockHash, _ := parentBlock.Hash()
+		parentBlockIdentifier = &types.BlockIdentifier{
+			Index: int64(parentBlock.Header.Height),
+			Hash:  parentBlockHash.String(),
+		}
+	}
+
+	// If we're at the first snapshot height, we do something special. We need to return a
+	// "fake genesis" block that consolidates all balances up to this point. See commentary
+	// in events.go for more detail on how this works.
+	snapshot := node.Snapshot
+	if snapshot != nil &&
+		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+
+		// If we're before the first snapshot, then we pretend the block doesn't have any
+		// transactions in it.
+		if height < snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+			return &types.Block{
+				BlockIdentifier:       blockIdentifier,
+				ParentBlockIdentifier: parentBlockIdentifier,
+				Timestamp:             int64(block.Header.TstampSecs) * 1000,
+				Transactions:          []*types.Transaction{},
+			}
+		}
+
+		// If we're right at the snapshot height, then we have to return a *special* block
+		// with a *special* txn that consolidates *all* of the balances in our db.
+		if height == snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+			balances, lockedBalances := node.Index.GetHypersyncBalanceSnapshot()
+			transaction := &types.Transaction{
+				TransactionIdentifier: &types.TransactionIdentifier{
+					// This is a random hash for our "genesis" txn
+					Hash: "b62eb824d32af56aa4499ed62720d789548aea978b0fc5cf2571252bb0fef4a8"},
+			}
+
+			var ops []*types.Operation
+			for kk, vv := range balances {
+				accountIdentifier := &types.AccountIdentifier{
+					Address: lib.Base58CheckEncode(kk[:], false, node.Params),
+				}
+				op := &types.Operation{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: int64(len(ops)),
+					},
+					Account: accountIdentifier,
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(vv, 10),
+						Currency: &Currency,
+					},
+					Status: &SuccessStatus,
+					Type:   OutputOpType,
+				}
+				ops = append(ops, op)
+			}
+			for kk, vv := range lockedBalances {
+				accountIdentifier := &types.AccountIdentifier{
+					Address: lib.PkToString(kk[:], node.Params),
+					SubAccount: &types.SubAccountIdentifier{
+						Address: CreatorCoin,
+					},
+				}
+				op := &types.Operation{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: int64(len(ops)),
+					},
+					Account: accountIdentifier,
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(vv, 10),
+						Currency: &Currency,
+					},
+					Status: &SuccessStatus,
+					Type:   OutputOpType,
+				}
+				ops = append(ops, op)
+			}
+			transaction.Operations = squashOperations(ops)
+
+			// We return a mega-fake-genesis block with all the hypersync account balances
+			// bootstrapped via output operations
+			return &types.Block{
+				BlockIdentifier:       blockIdentifier,
+				ParentBlockIdentifier: parentBlockIdentifier,
+				Timestamp:             int64(block.Header.TstampSecs) * 1000,
+				Transactions:          []*types.Transaction{transaction},
+			}
+		}
+	}
+
+	// If we get here, we know we either don't have a snapshot, or we're past the first
+	// snapshot height. This means we need to parse and return the transaction operations
+	// like usual.
 	return &types.Block{
 		BlockIdentifier:       blockIdentifier,
 		ParentBlockIdentifier: parentBlockIdentifier,
 		Timestamp:             int64(block.Header.TstampSecs) * 1000,
-		Transactions:          transactions,
+		Transactions:          node.GetTransactionsForConvertBlock(block),
 	}
 }
 
@@ -633,6 +722,7 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.
 }
 
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
 
