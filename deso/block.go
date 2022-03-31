@@ -25,7 +25,8 @@ func (node *Node) GetBlock(hash string) *types.Block {
 		return nil
 	}
 
-	return node.convertBlock(block)
+	ret := node.convertBlock(block)
+	return ret
 }
 
 func (node *Node) GetBlockAtHeight(height int64) *types.Block {
@@ -35,7 +36,8 @@ func (node *Node) GetBlockAtHeight(height int64) *types.Block {
 		return nil
 	}
 
-	return node.convertBlock(block)
+	ret := node.convertBlock(block)
+	return ret
 }
 
 func (node *Node) CurrentBlock() *types.Block {
@@ -222,6 +224,11 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 
 			var ops []*types.Operation
 			for kk, vv := range balances {
+				// As an optimization, don't add operations for zero balances.
+				if vv == 0 {
+					continue
+				}
+
 				accountIdentifier := &types.AccountIdentifier{
 					Address: lib.Base58CheckEncode(kk[:], false, node.Params),
 				}
@@ -240,6 +247,11 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				ops = append(ops, op)
 			}
 			for kk, vv := range lockedBalances {
+				// As an optimization, don't add operations for zero balances.
+				if vv == 0 {
+					continue
+				}
+
 				accountIdentifier := &types.AccountIdentifier{
 					Address: lib.PkToString(kk[:], node.Params),
 					SubAccount: &types.SubAccountIdentifier{

@@ -160,7 +160,14 @@ func NewNode(config *Config) *Node {
 func (node *Node) Start() {
 	// TODO: Replace glog with logrus so we can also get rid of flag library
 	flag.Set("alsologtostderr", "true")
+	flag.Set("log_dir", node.Config.LogDirectory)
+	flag.Set("v", fmt.Sprintf("%d", node.Config.GlogV))
+	flag.Set("vmodule", node.Config.GlogVmodule)
 	flag.Parse()
+	glog.CopyStandardLogTo("INFO")
+
+	// Print config
+	glog.Infof("Start() | After node glog config")
 
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
@@ -171,7 +178,7 @@ func (node *Node) Start() {
 
 	listeningAddrs, listeners := getAddrsToListenOn(node.Config.NodePort)
 
-	if node.Online {
+	if node.Online && len(node.Config.ConnectIPs) == 0 {
 		for _, addr := range listeningAddrs {
 			netAddr := wire.NewNetAddress(&addr, 0)
 			_ = desoAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
@@ -185,9 +192,8 @@ func (node *Node) Start() {
 	}
 
 	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
-	opts := badger.DefaultOptions(dbDir)
+	opts := lib.PerformanceBadgerOptions(dbDir)
 	opts.ValueDir = dbDir
-	opts.MemTableSize = 8000000000 // 8gb
 	db, err := badger.Open(opts)
 	if err != nil {
 		panic(err)
@@ -202,9 +208,8 @@ func (node *Node) Start() {
 
 	// Setup rosetta index
 	rosettaIndexDir := filepath.Join(node.Config.DataDirectory, "index")
-	rosettaIndexOpts := badger.DefaultOptions(rosettaIndexDir)
+	rosettaIndexOpts := lib.PerformanceBadgerOptions(rosettaIndexDir)
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
-	rosettaIndexOpts.MemTableSize = 8000000000 // 8gb
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
 	node.Index = NewIndex(rosettaIndex)
 
