@@ -52,7 +52,7 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 	blockchain := node.GetBlockchain()
 	currentBlock := blockchain.BlockTip()
 
-	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil)
+	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil, blockchain.Snapshot())
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
@@ -175,7 +175,7 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, blockchain.Snapshot())
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}

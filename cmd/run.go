@@ -47,7 +47,7 @@ to quickly create a Cobra application.`,
 			false,
 		)
 		if err != nil {
-			glog.Fatalf("unable to create new server asserter", "error", err)
+			glog.Fatalf("unable to create new server asserter error: %v", err)
 			return err
 		}
 
@@ -78,7 +78,7 @@ func init() {
 	runCmd.PersistentFlags().StringSlice("miner-public-keys", []string{}, "a list of public keys for testnet mining")
 	runCmd.PersistentFlags().Bool("regtest", false, "don't connect to dorsey testnet, mine and spend blocks instantly")
 	runCmd.PersistentFlags().StringSlice("connect-ips", []string{}, "list of addresses to only connect to")
-
+	runCmd.PersistentFlags().Bool("hyper-sync", false, "turn hyper sync mode on")
 	runCmd.PersistentFlags().VisitAll(func(flag *pflag.Flag) {
 		viper.BindPFlag(flag.Name, flag)
 	})

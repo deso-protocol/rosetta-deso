@@ -10,17 +10,19 @@ import (
 )
 
 type Config struct {
-	Mode                   Mode
-	Network                *types.NetworkIdentifier
-	Params                 *lib.DeSoParams
-	Currency               *types.Currency
-	GenesisBlockIdentifier *types.BlockIdentifier
-	Port                   int
-	NodePort               int
-	DataDirectory          string
-	MinerPublicKeys        []string
-	Regtest                bool
-	ConnectIPs             []string
+	Mode                      Mode
+	Network                   *types.NetworkIdentifier
+	Params                    *lib.DeSoParams
+	Currency                  *types.Currency
+	GenesisBlockIdentifier    *types.BlockIdentifier
+	Port                      int
+	NodePort                  int
+	DataDirectory             string
+	MinerPublicKeys           []string
+	Regtest                   bool
+	HyperSync                 bool
+	SnapshotBlockHeightPeriod uint64
+	ConnectIPs                []string
 }
 
 func LoadConfig() (*Config, error) {
@@ -57,6 +59,7 @@ func LoadConfig() (*Config, error) {
 	result.NodePort = viper.GetInt("node-port")
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
 	result.Regtest = viper.GetBool("regtest")
+	result.HyperSync = viper.GetBool("hyper-sync")
 	result.ConnectIPs = viper.GetStringSlice("connect-ips")
 
 	return &result, nil

@@ -224,6 +224,15 @@ func (node *Node) Start() {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
+	// Setup snapshot
+	var snapshot *lib.Snapshot
+	if node.Config.HyperSync {
+		snapshot, err, _ = lib.NewSnapshot(node.Config.DataDirectory, node.Config.SnapshotBlockHeightPeriod, false, false)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	node.Server, err = lib.NewServer(
 		node.Config.Params,
 		listeners,
@@ -231,11 +240,14 @@ func (node *Node) Start() {
 		connectIPs,
 		db,
 		nil,
+		snapshot,
 		targetOutboundPeers,
 		maxInboundPeers,
 		node.Config.MinerPublicKeys,
 		minerCount,
 		true,
+		node.Config.HyperSync,
+		0,
 		rateLimitFeerateNanosPerKB,
 		MinFeeRateNanosPerKB,
 		stallTimeoutSeconds,
