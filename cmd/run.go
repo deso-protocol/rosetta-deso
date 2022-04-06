@@ -5,8 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -36,8 +34,9 @@ to quickly create a Cobra application.`,
 			return err
 		}
 
+		shutdownListener := make(chan os.Signal)
 		node := deso.NewNode(config)
-		go node.Start()
+		go node.Start(&shutdownListener)
 
 		asserter, err := asserter.NewServer(
 			deso.OperationTypes,
@@ -55,13 +54,8 @@ to quickly create a Cobra application.`,
 		loggedRouter := server.LoggerMiddleware(router)
 		corsRouter := server.CorsMiddleware(loggedRouter)
 		log.Printf("Listening on port %d\n", config.Port)
-		go log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), corsRouter))
-
-		shutdownListener := make(chan os.Signal)
-		signal.Notify(shutdownListener, syscall.SIGINT, syscall.SIGTERM)
-		defer func() {
-			node.Stop()
-			glog.Info("Shutdown complete")
+		go func() {
+			glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), corsRouter))
 		}()
 
 		<-shutdownListener

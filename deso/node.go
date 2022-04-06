@@ -3,9 +3,13 @@ package deso
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 	"math/rand"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/btcsuite/btcd/addrmgr"
@@ -140,12 +144,19 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 
 type Node struct {
 	*lib.Server
+	chainDB      *badger.DB
 	Snapshot     *lib.Snapshot
 	Params       *lib.DeSoParams
 	EventManager *lib.EventManager
 	Index        *Index
 	Online       bool
 	Config       *Config
+
+	// False when a NewNode is created, set to true on Start(), set to false
+	// after Stop() is called. Mainly used in testing.
+	isRunning        bool
+	internalExitChan chan os.Signal
+	nodeMessageChan  chan lib.NodeMessage
 }
 
 func NewNode(config *Config) *Node {
@@ -153,11 +164,13 @@ func NewNode(config *Config) *Node {
 	result.Config = config
 	result.Online = config.Mode == Online
 	result.Params = config.Params
+	result.internalExitChan = make(chan os.Signal)
+	result.nodeMessageChan = make(chan lib.NodeMessage)
 
 	return &result
 }
 
-func (node *Node) Start() {
+func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	// TODO: Replace glog with logrus so we can also get rid of flag library
 	flag.Set("alsologtostderr", "true")
 	flag.Set("log_dir", node.Config.LogDirectory)
@@ -168,6 +181,10 @@ func (node *Node) Start() {
 
 	// Print config
 	glog.Infof("Start() | After node glog config")
+
+	node.internalExitChan = make(chan os.Signal)
+	node.nodeMessageChan = make(chan lib.NodeMessage)
+	signal.Notify(node.internalExitChan, syscall.SIGINT, syscall.SIGTERM)
 
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
@@ -191,10 +208,11 @@ func (node *Node) Start() {
 		go addSeedAddrsFromPrefixes(desoAddrMgr, node.Config.Params)
 	}
 
+	var err error
 	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
 	opts := lib.PerformanceBadgerOptions(dbDir)
 	opts.ValueDir = dbDir
-	db, err := badger.Open(opts)
+	node.chainDB, err = badger.Open(opts)
 	if err != nil {
 		panic(err)
 	}
@@ -231,25 +249,14 @@ func (node *Node) Start() {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
-	// Setup snapshot
-	var snapshot *lib.Snapshot
-	if node.Config.HyperSync {
-		snapshot, err = lib.NewSnapshot(node.Config.DataDirectory, lib.SnapshotBlockHeightPeriod,
-			false, false)
-		if err != nil {
-			panic(err)
-		}
-		node.Snapshot = snapshot
-	}
-
-	node.Server, err = lib.NewServer(
+	shouldRestart := false
+	node.Server, err, shouldRestart = lib.NewServer(
 		node.Config.Params,
 		listeners,
 		desoAddrMgr,
 		connectIPs,
-		db,
+		node.chainDB,
 		nil,
-		snapshot,
 		targetOutboundPeers,
 		maxInboundPeers,
 		node.Config.MinerPublicKeys,
@@ -265,6 +272,7 @@ func (node *Node) Start() {
 		minBlockUpdateInterval,
 		blockCypherAPIKey,
 		true,
+		lib.SnapshotBlockHeightPeriod,
 		node.Config.DataDirectory,
 		mempoolDumpDir,
 		disableNetworking,
@@ -275,10 +283,91 @@ func (node *Node) Start() {
 		[]string{},
 		0,
 		node.EventManager,
+		node.nodeMessageChan,
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	node.Server.Start()
+	if !shouldRestart {
+		node.Server.Start()
+	}
+	node.isRunning = true
+
+	if shouldRestart {
+		if node.nodeMessageChan != nil {
+			node.nodeMessageChan <- lib.NodeRestart
+		}
+	}
+
+	go func() {
+		<-node.internalExitChan
+		node.Stop()
+		if node.internalExitChan != nil {
+			close(node.internalExitChan)
+			node.internalExitChan = nil
+		}
+		for _, channel := range exitChannels {
+			if *channel != nil {
+				close(*channel)
+				*channel = nil
+			}
+		}
+		glog.Info(lib.CLog(lib.Yellow, "Core node shutdown complete"))
+	}()
+}
+
+func (node *Node) Stop() {
+	if !node.isRunning {
+		return
+	}
+	node.isRunning = false
+
+	glog.Infof(lib.CLog(lib.Yellow, "Node is shutting down. This might take a minute. Please don't "+
+		"close the node now or else you might corrupt the state."))
+
+	node.Server.Stop()
+
+	if node.Server.GetBlockchain().Snapshot() != nil {
+		node.Server.GetBlockchain().Snapshot().Stop()
+	}
+
+	if err := node.chainDB.Close(); err != nil {
+		panic(errors.Wrapf(err, "Problem stopping blockchain db"))
+	}
+	if err := node.Index.db.Close(); err != nil {
+		panic(errors.Wrapf(err, "Problem stopping index db"))
+	}
+
+	if node.internalExitChan != nil {
+		close(node.internalExitChan)
+		node.internalExitChan = nil
+	}
+}
+
+func (node *Node) listenToRestart() {
+	select {
+	case <-node.internalExitChan:
+		break
+	case operation := <-node.nodeMessageChan:
+		if !node.isRunning {
+			panic("Node.listenToRestart: Node is currently not running, nodeMessageChan should've not been called!")
+		}
+		glog.Infof("Node.listenToRestart: Stopping node")
+		node.Stop()
+		glog.Infof("Node.listenToRestart: Finished stopping node")
+		switch operation {
+		case lib.NodeErase:
+			if err := os.RemoveAll(node.Config.DataDirectory); err != nil {
+				glog.Fatal(lib.CLog(lib.Red, fmt.Sprintf("IMPORTANT: Problem removing the directory (%v), you "+
+					"should run `rm -rf %v` to delete it manually. Error: (%v)", node.Config.DataDirectory,
+					node.Config.DataDirectory, err)))
+				return
+			}
+		}
+
+		glog.Infof("Node.listenToRestart: Restarting node")
+		go node.Start()
+		break
+	}
 }
