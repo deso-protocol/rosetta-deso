@@ -1,7 +1,6 @@
 package deso
 
 import (
-	"fmt"
 	"github.com/deso-protocol/core/lib"
 	"github.com/golang/glog"
 )
