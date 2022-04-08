@@ -3,12 +3,12 @@ package deso
 import (
 	"flag"
 	"fmt"
-	"github.com/pkg/errors"
 	"math/rand"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -154,9 +154,12 @@ type Node struct {
 
 	// False when a NewNode is created, set to true on Start(), set to false
 	// after Stop() is called. Mainly used in testing.
-	isRunning        bool
+	isRunning    bool
+	runningMutex sync.Mutex
+
 	internalExitChan chan os.Signal
 	nodeMessageChan  chan lib.NodeMessage
+	stopWaitGroup    sync.WaitGroup
 }
 
 func NewNode(config *Config) *Node {
@@ -178,13 +181,15 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	flag.Set("vmodule", node.Config.GlogVmodule)
 	flag.Parse()
 	glog.CopyStandardLogTo("INFO")
+	node.runningMutex.Lock()
+	defer node.runningMutex.Unlock()
 
 	// Print config
 	glog.Infof("Start() | After node glog config")
 
 	node.internalExitChan = make(chan os.Signal)
 	node.nodeMessageChan = make(chan lib.NodeMessage)
-	signal.Notify(node.internalExitChan, syscall.SIGINT, syscall.SIGTERM)
+	go node.listenToRestart()
 
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
@@ -300,13 +305,18 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		}
 	}
 
+	syscallChannel := make(chan os.Signal)
+	signal.Notify(syscallChannel, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-node.internalExitChan
-		node.Stop()
-		if node.internalExitChan != nil {
-			close(node.internalExitChan)
-			node.internalExitChan = nil
+		select {
+		case _, open := <-node.internalExitChan:
+			if !open {
+				return
+			}
+		case <-syscallChannel:
 		}
+
+		node.Stop()
 		for _, channel := range exitChannels {
 			if *channel != nil {
 				close(*channel)
@@ -318,26 +328,36 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 }
 
 func (node *Node) Stop() {
+	node.runningMutex.Lock()
+	defer node.runningMutex.Unlock()
+
 	if !node.isRunning {
 		return
 	}
 	node.isRunning = false
-
 	glog.Infof(lib.CLog(lib.Yellow, "Node is shutting down. This might take a minute. Please don't "+
 		"close the node now or else you might corrupt the state."))
 
+	// Server
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Stopping server..."))
 	node.Server.Stop()
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Server successfully stopped."))
 
-	if node.Server.GetBlockchain().Snapshot() != nil {
-		node.Server.GetBlockchain().Snapshot().Stop()
+	// Snapshot
+	snap := node.Server.GetBlockchain().Snapshot()
+	if snap != nil {
+		glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Stopping snapshot..."))
+		snap.Stop()
+		node.closeDb(snap.SnapshotDb, "snapshot")
+		glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Snapshot successfully stopped."))
 	}
 
-	if err := node.chainDB.Close(); err != nil {
-		panic(errors.Wrapf(err, "Problem stopping blockchain db"))
-	}
-	if err := node.Index.db.Close(); err != nil {
-		panic(errors.Wrapf(err, "Problem stopping index db"))
-	}
+	// Databases
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Closing all databases..."))
+	node.closeDb(node.chainDB, "chain")
+	node.closeDb(node.Index.db, "rosetta")
+	node.stopWaitGroup.Wait()
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Databases successfully closed."))
 
 	if node.internalExitChan != nil {
 		close(node.internalExitChan)
@@ -345,7 +365,22 @@ func (node *Node) Stop() {
 	}
 }
 
-func (node *Node) listenToRestart() {
+// Close a database and handle the stopWaitGroup accordingly.
+func (node *Node) closeDb(db *badger.DB, dbName string) {
+	node.stopWaitGroup.Add(1)
+
+	glog.Infof("Node.closeDb: Preparing to close %v db", dbName)
+	go func() {
+		defer node.stopWaitGroup.Done()
+		if err := db.Close(); err != nil {
+			glog.Fatalf(lib.CLog(lib.Red, fmt.Sprintf("Node.Stop: Problem closing %v db: err: (%v)", dbName, err)))
+		} else {
+			glog.Infof(lib.CLog(lib.Yellow, fmt.Sprintf("Node.closeDb: Closed %v Db", dbName)))
+		}
+	}()
+}
+
+func (node *Node) listenToRestart(exitChannels ...*chan os.Signal) {
 	select {
 	case <-node.internalExitChan:
 		break
@@ -367,7 +402,7 @@ func (node *Node) listenToRestart() {
 		}
 
 		glog.Infof("Node.listenToRestart: Restarting node")
-		go node.Start()
+		go node.Start(exitChannels...)
 		break
 	}
 }
