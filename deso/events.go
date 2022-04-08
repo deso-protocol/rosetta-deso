@@ -1,8 +1,12 @@
 package deso
 
 import (
+	"fmt"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/deso-protocol/core/lib"
+	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/glog"
+	"github.com/pkg/errors"
 )
 
 func (node *Node) handleSnapshotCompleted() {
@@ -28,28 +32,44 @@ func (node *Node) handleSnapshotCompleted() {
 			// Iterate through every single public key and put a balance snapshot down
 			// for it for this block. We don't need to worry about ancestral records here
 			// because we haven't generated any yet.
-			publicKeys, balanceByteSlices := lib.EnumerateKeysForPrefix(
-				node.GetBlockchain().DB(),
-				lib.Prefixes.PrefixPublicKeyToDeSoBalanceNanos)
-			balances := make(map[lib.PublicKey]uint64, len(publicKeys))
-			for ii, balBytes := range balanceByteSlices {
-				bal := lib.DecodeUint64(balBytes)
-				pubKey := lib.NewPublicKey(publicKeys[ii][1:])
-				balances[*pubKey] = bal
-			}
 
-			// Save all the balances for this height. This is like a fake genesis block.
-			err := node.Index.PutHypersyncBalanceSnapshot(false, balances)
+			err := node.Index.db.Update(func(indexTxn *badger.Txn) error {
+				return node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
+					opts := badger.DefaultIteratorOptions
+					nodeIterator := chainTxn.NewIterator(opts)
+					defer nodeIterator.Close()
+					prefix := lib.Prefixes.PrefixPublicKeyToDeSoBalanceNanos
+					for nodeIterator.Seek(prefix); nodeIterator.ValidForPrefix(prefix); nodeIterator.Next() {
+						key := nodeIterator.Item().Key()
+						keyCopy := make([]byte, len(key))
+						copy(keyCopy[:], key[:])
+
+						valCopy, err := nodeIterator.Item().ValueCopy(nil)
+						if err != nil {
+							return errors.Wrapf(err, "Problem iterating over chain database, "+
+								"on key (%v) and value (%v)", keyCopy, valCopy)
+						}
+
+						balance := lib.DecodeUint64(valCopy)
+						pubKey := lib.NewPublicKey(key[1:])
+						if err := node.Index.PutHypersyncSingleBalanceSnapshotWithTxn(
+							indexTxn, false, *pubKey, balance); err != nil {
+							return errors.Wrapf(err, "Problem updating hypersync balance "+
+								"snapshot in index, on key (%v) and value (%v)", keyCopy, valCopy)
+						}
+						if err := node.Index.PutSingleBalanceSnapshotWithTxn(
+							indexTxn, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
+							false, *pubKey, balance); err != nil {
+							return errors.Wrapf(err, "Problem updating balance snapshot in index, "+
+								"on key (%v), value (%v), and height (%v)", keyCopy, valCopy,
+								snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
+						}
+					}
+					return nil
+				})
+			})
 			if err != nil {
-				glog.Errorf("PutBalanceSnapshot: %v", err)
-			}
-			// We have to also put the balances in the other index. Not doing this would cause
-			// balances to return zero when we're PAST the first snapshot block height.
-			err = node.Index.PutBalanceSnapshot(
-				snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
-				false, balances)
-			if err != nil {
-				glog.Errorf("PutBalanceSnapshot: %v", err)
+				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: error: (%v)", err)))
 			}
 		}
 
@@ -63,34 +83,73 @@ func (node *Node) handleSnapshotCompleted() {
 			//
 			// TODO: Do we need to do anything special for SwapIdentity? See below for
 			// some tricky logic there.
-			lockedDeSoNanos, pkids, _, err := lib.DBGetAllProfilesByCoinValue(
-				node.GetBlockchain().DB(), nil, false)
-			if err != nil {
-				glog.Errorf("DBGetAllProfilesByCoinValue: %v", err)
-			}
-			lockedBalances := make(map[lib.PublicKey]uint64, len(pkids))
-			for ii := range lockedDeSoNanos {
-				lockedNanos := lockedDeSoNanos[ii]
-				pkBytes := lib.DBGetPublicKeyForPKID(node.GetBlockchain().DB(), nil, pkids[ii])
-				if pkBytes == nil {
-					glog.Errorf("DBGetPublicKeyForPKID: Nil pkBytes for pkid %v",
-						lib.PkToStringMainnet(pkids[ii][:]))
-				}
-				pubKey := lib.NewPublicKey(pkBytes)
-				lockedBalances[*pubKey] = lockedNanos
-			}
 
-			err = node.Index.PutHypersyncBalanceSnapshot(true, lockedBalances)
+			err := node.Index.db.Update(func(indexTxn *badger.Txn) error {
+				// This is pretty much the same as lib.DBGetAllProfilesByCoinValue but we don't load all entries into memory.
+				return node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
+					dbPrefixx := append([]byte{}, lib.Prefixes.PrefixCreatorDeSoLockedNanosCreatorPKID...)
+					opts := badger.DefaultIteratorOptions
+					opts.PrefetchValues = false
+					// Go in reverse order since a larger count is better.
+					opts.Reverse = true
+
+					it := chainTxn.NewIterator(opts)
+					defer it.Close()
+					// Since we iterate backwards, the prefix must be bigger than all possible
+					// counts that could actually exist. We use eight bytes since the count is
+					// encoded as a 64-bit big-endian byte slice, which will be eight bytes long.
+					maxBigEndianUint64Bytes := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+					prefix := append(dbPrefixx, maxBigEndianUint64Bytes...)
+					for it.Seek(prefix); it.ValidForPrefix(dbPrefixx); it.Next() {
+						rawKey := it.Item().Key()
+
+						// Strip the prefix off the key and check its length. If it contains
+						// a big-endian uint64 then it should be at least eight bytes.
+						lockedDeSoPubKeyConcatKey := rawKey[1:]
+						uint64BytesLen := len(maxBigEndianUint64Bytes)
+						expectedLength := uint64BytesLen + btcec.PubKeyBytesLenCompressed
+						if len(lockedDeSoPubKeyConcatKey) != expectedLength {
+							return fmt.Errorf("Invalid key length %d should be at least %d",
+								len(lockedDeSoPubKeyConcatKey), expectedLength)
+						}
+
+						lockedDeSoNanos := lib.DecodeUint64(lockedDeSoPubKeyConcatKey[:uint64BytesLen])
+
+						// Appended to the stake should be the profile pub key so extract it here.
+						profilePKIDbytes := make([]byte, btcec.PubKeyBytesLenCompressed)
+						copy(profilePKIDbytes[:], lockedDeSoPubKeyConcatKey[uint64BytesLen:])
+						profilePKID := lib.PublicKeyToPKID(profilePKIDbytes)
+
+						pkBytes := lib.DBGetPublicKeyForPKIDWithTxn(chainTxn, nil, profilePKID)
+						if pkBytes == nil {
+							return fmt.Errorf("DBGetPublicKeyForPKIDWithTxn: Nil pkBytes for pkid %v",
+								lib.PkToStringMainnet(profilePKID[:]))
+						}
+						pubKey := *lib.NewPublicKey(pkBytes)
+						if err := node.Index.PutHypersyncSingleBalanceSnapshotWithTxn(
+							indexTxn, true, pubKey, lockedDeSoNanos); err != nil {
+
+							return errors.Wrapf(err, "PutHypersyncSingleBalanceSnapshotWithTxn: problem with "+
+								"pubkey (%v) lockedDeSoNanos (%v)", pubKey, lockedDeSoNanos)
+						}
+
+						// We have to also put the balances in the other index. Not doing this would cause
+						// balances to return zero when we're PAST the first snapshot block height.
+						if err := node.Index.PutSingleBalanceSnapshotWithTxn(
+							indexTxn, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
+							true, pubKey, lockedDeSoNanos); err != nil {
+
+							return errors.Wrapf(err, "PutSingleBalanceSnapshotWithTxn: problem with "+
+								"pubkey (%v), lockedDeSoNanos (%v) and firstSnapshotHeight (%v)",
+								pubKey, lockedDeSoNanos, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
+						}
+					}
+					return nil
+				})
+			})
 			if err != nil {
-				glog.Errorf("PutLockedBalanceSnapshot: %v", err)
-			}
-			// We have to also put the balances in the other index. Not doing this would cause
-			// balances to return zero when we're PAST the first snapshot block height.
-			err = node.Index.PutBalanceSnapshot(
-				snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
-				true, lockedBalances)
-			if err != nil {
-				glog.Errorf("PutLockedBalanceSnapshot: %v", err)
+				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: Problem iterating locked "+
+					"creator DeSo nanos: error: (%v)", err)))
 			}
 		}
 

@@ -132,37 +132,77 @@ func (index *Index) GetHypersyncBalanceSnapshot() (
 func (index *Index) PutHypersyncBalanceSnapshot(
 	isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
 
+	return index.db.Update(func(txn *badger.Txn) error {
+		return index.PutHypersyncBalanceSnapshotWithTxn(txn, isLockedBalance, balances)
+	})
+}
+
+func (index *Index) PutHypersyncBalanceSnapshotWithTxn(
+	txn *badger.Txn, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
+
 	isLockedPrefix := byte(0)
 	if isLockedBalance {
 		isLockedPrefix = byte(1)
 	}
 
-	return index.db.Update(func(txn *badger.Txn) error {
-		for pk, bal := range balances {
-			pubKeyAndIsLocked := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
-			pubKeyAndIsLocked = append(pubKeyAndIsLocked, isLockedPrefix)
-			pubKeyAndIsLocked = append(pubKeyAndIsLocked, pk[:]...)
-			if err := txn.Set(pubKeyAndIsLocked, lib.EncodeUint64(bal)); err != nil {
-				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
-					"%v pub key: %v balance: %v", isLockedPrefix, pk, bal)
-			}
+	for pk, bal := range balances {
+		pubKeyAndIsLocked := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
+		pubKeyAndIsLocked = append(pubKeyAndIsLocked, isLockedPrefix)
+		pubKeyAndIsLocked = append(pubKeyAndIsLocked, pk[:]...)
+		if err := txn.Set(pubKeyAndIsLocked, lib.EncodeUint64(bal)); err != nil {
+			return errors.Wrapf(err, "PutHypersyncBalanceSnapshotWithTxn: Error for isLockedPrefix: "+
+				"%v pub key: %v balance: %v", isLockedPrefix, pk, bal)
 		}
-		return nil
-	})
+	}
+	return nil
+}
+
+func (index *Index) PutHypersyncSingleBalanceSnapshotWithTxn(
+	txn *badger.Txn, isLockedBalance bool, publicKey lib.PublicKey, balance uint64) error {
+
+	isLockedPrefix := byte(0)
+	if isLockedBalance {
+		isLockedPrefix = byte(1)
+	}
+
+	pubKeyAndIsLocked := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
+	pubKeyAndIsLocked = append(pubKeyAndIsLocked, isLockedPrefix)
+	pubKeyAndIsLocked = append(pubKeyAndIsLocked, publicKey[:]...)
+	if err := txn.Set(pubKeyAndIsLocked, lib.EncodeUint64(balance)); err != nil {
+		return errors.Wrapf(err, "PutHypersyncSingleBalanceSnapshotWithTxn: Error for isLockedPrefix: "+
+			"%v pub key: %v balance: %v", isLockedPrefix, publicKey, balance)
+	}
+	return nil
 }
 
 func (index *Index) PutBalanceSnapshot(
 	height uint64, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
 
 	return index.db.Update(func(txn *badger.Txn) error {
-		for pk, bal := range balances {
-			if err := txn.Set(balanceSnapshotKey(isLockedBalance, &pk, height, bal), []byte{}); err != nil {
-				return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
-					"%v pub key: %v balance: %v", height, pk, bal)
-			}
-		}
-		return nil
+		return index.PutBalanceSnapshotWithTxn(txn, height, isLockedBalance, balances)
 	})
+}
+
+func (index *Index) PutBalanceSnapshotWithTxn(
+	txn *badger.Txn, height uint64, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
+
+	for pk, bal := range balances {
+		if err := txn.Set(balanceSnapshotKey(isLockedBalance, &pk, height, bal), []byte{}); err != nil {
+			return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
+				"%v pub key: %v balance: %v", height, pk, bal)
+		}
+	}
+	return nil
+}
+
+func (index *Index) PutSingleBalanceSnapshotWithTxn(
+	txn *badger.Txn, height uint64, isLockedBalance bool, publicKey lib.PublicKey, balance uint64) error {
+
+	if err := txn.Set(balanceSnapshotKey(isLockedBalance, &publicKey, height, balance), []byte{}); err != nil {
+		return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
+			"%v pub key: %v balance: %v", height, publicKey, balance)
+	}
+	return nil
 }
 
 func GetBalanceForPublicKeyAtBlockHeightWithTxn(
