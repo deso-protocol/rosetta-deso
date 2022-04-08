@@ -1,13 +1,14 @@
 package deso
 
 import (
+	"fmt"
 	"github.com/deso-protocol/core/lib"
 	"github.com/golang/glog"
 )
 
 func (node *Node) handleSnapshotCompleted() {
 	// We do some special logic if we have a snapshot.
-	snapshot := node.Snapshot
+	snapshot := node.Server.GetBlockchain().Snapshot()
 	if snapshot != nil &&
 		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
 
@@ -100,16 +101,18 @@ func (node *Node) handleSnapshotCompleted() {
 
 func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	// We do some special logic if we have a snapshot.
-	snapshot := node.Snapshot
-	if snapshot != nil &&
-		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+	if node.Server != nil {
+		snapshot := node.Server.GetBlockchain().Snapshot()
+		if snapshot != nil &&
+			snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
 
-		firstSnapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
+			firstSnapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
 
-		// If we're before the first snapshot height, then do nothing.
-		height := event.Block.Header.Height
-		if height <= firstSnapshotHeight {
-			return
+			// If we're before the first snapshot height, then do nothing.
+			height := event.Block.Header.Height
+			if height <= firstSnapshotHeight {
+				return
+			}
 		}
 	}
 	// If we get here, then we're connecting a block after the first snapshot OR we

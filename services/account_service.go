@@ -52,7 +52,7 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 	blockchain := node.GetBlockchain()
 	currentBlock := blockchain.BlockTip()
 
-	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil, node.Snapshot)
+	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil, node.Server.GetBlockchain().Snapshot())
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
@@ -107,7 +107,6 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 }
 
 func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, block *types.PartialBlockIdentifier) (*types.AccountBalanceResponse, *types.Error) {
-
 	var desoBlock *lib.MsgDeSoBlock
 	if block.Hash != nil {
 		hashBytes, err := hex.DecodeString(*block.Hash)
@@ -137,12 +136,13 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	}
 	publicKey := lib.NewPublicKey(publicKeyBytes)
 
-	if node.Snapshot != nil &&
-		node.Snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+	snapshot := node.Server.GetBlockchain().Snapshot()
+	if snapshot != nil &&
+		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
 
 		// If the block is before the snapshot height, we report the historical
 		// balance as zero. See events.go for commentary on this. &&
-		if desoBlock.Header.Height < node.Snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+		if desoBlock.Header.Height < snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
 			return &types.AccountBalanceResponse{
 				BlockIdentifier: &types.BlockIdentifier{
 					Hash:  blockHash.String(),
@@ -159,7 +159,7 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 
 		// If the block height is equal to the snapshot height, then we have a special case
 		// here as well. See events.go for why this works the way it does.
-		if desoBlock.Header.Height == node.Snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+		if desoBlock.Header.Height == node.Server.GetBlockchain().Snapshot().CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
 			balances, lockedBalances := node.Index.GetHypersyncBalanceSnapshot()
 
 			balance := uint64(0)
@@ -223,7 +223,7 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, s.node.Snapshot)
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, s.node.Server.GetBlockchain().Snapshot())
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}

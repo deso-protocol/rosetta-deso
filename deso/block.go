@@ -197,7 +197,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	// If we're at the first snapshot height, we do something special. We need to return a
 	// "fake genesis" block that consolidates all balances up to this point. See commentary
 	// in events.go for more detail on how this works.
-	snapshot := node.Snapshot
+	snapshot := node.Server.GetBlockchain().Snapshot()
 	if snapshot != nil &&
 		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
 

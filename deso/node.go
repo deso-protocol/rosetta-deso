@@ -145,7 +145,6 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 type Node struct {
 	*lib.Server
 	chainDB      *badger.DB
-	Snapshot     *lib.Snapshot
 	Params       *lib.DeSoParams
 	EventManager *lib.EventManager
 	Index        *Index
