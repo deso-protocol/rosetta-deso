@@ -105,10 +105,10 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHei
 	return prefix
 }
 
-func hypersyncBalanceSnapshotKey(isLockeBalance bool, publicKey *lib.PublicKey) []byte {
+func hypersyncBalanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey) []byte {
 
 	lockedPrefix := byte(0)
-	if isLockeBalance {
+	if isLockedBalance {
 		lockedPrefix = byte(1)
 	}
 
@@ -153,8 +153,7 @@ func (index *Index) GetHypersyncSingleBalanceSnapshot(isLockedBalance bool, publ
 			return nil
 		}
 		balanceBytes, _ := item.ValueCopy(nil)
-		rr := bytes.NewBuffer(balanceBytes)
-		balance, _ = lib.ReadUvarint(rr)
+		balance = lib.DecodeUint64(balanceBytes)
 		return nil
 	})
 	return balance
