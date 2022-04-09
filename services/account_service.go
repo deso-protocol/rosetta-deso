@@ -160,13 +160,11 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		// If the block height is equal to the snapshot height, then we have a special case
 		// here as well. See events.go for why this works the way it does.
 		if desoBlock.Header.Height == node.Server.GetBlockchain().Snapshot().CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			balances, lockedBalances := node.Index.GetHypersyncBalanceSnapshot()
-
 			balance := uint64(0)
 			if account.SubAccount == nil {
-				balance = balances[*publicKey]
+				balance = node.Index.GetHypersyncSingleBalanceSnapshot(false, publicKey)
 			} else if account.SubAccount.Address == deso.CreatorCoin {
-				balance = lockedBalances[*publicKey]
+				balance = node.Index.GetHypersyncSingleBalanceSnapshot(true, publicKey)
 			}
 
 			// Look up the balances for this height. Just fetch all of them.

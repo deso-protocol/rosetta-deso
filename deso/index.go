@@ -105,6 +105,19 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHei
 	return prefix
 }
 
+func hypersyncBalanceSnapshotKey(isLockeBalance bool, publicKey *lib.PublicKey) []byte {
+
+	lockedPrefix := byte(0)
+	if isLockeBalance {
+		lockedPrefix = byte(1)
+	}
+
+	prefix := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
+	prefix = append(prefix, lockedPrefix)
+	prefix = append(prefix, publicKey[:]...)
+	return prefix
+}
+
 func (index *Index) GetHypersyncBalanceSnapshot() (
 	_balances map[lib.PublicKey]uint64,
 	_lockedBalances map[lib.PublicKey]uint64) {
@@ -127,6 +140,24 @@ func (index *Index) GetHypersyncBalanceSnapshot() (
 	}
 
 	return balances, lockedBalances
+}
+
+func (index *Index) GetHypersyncSingleBalanceSnapshot(isLockedBalance bool, publicKey *lib.PublicKey) uint64 {
+
+	var balance uint64
+	index.db.View(func(txn *badger.Txn) error {
+		key := hypersyncBalanceSnapshotKey(isLockedBalance, publicKey)
+		item, err := txn.Get(key)
+		if err != nil {
+			balance = 0
+			return nil
+		}
+		balanceBytes, _ := item.ValueCopy(nil)
+		rr := bytes.NewBuffer(balanceBytes)
+		balance, _ = lib.ReadUvarint(rr)
+		return nil
+	})
+	return balance
 }
 
 func (index *Index) PutHypersyncBalanceSnapshot(
