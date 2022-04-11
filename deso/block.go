@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/glog"
 	"strconv"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -201,25 +202,40 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	if snapshot != nil &&
 		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
 
-		// If we're before the first snapshot, then we pretend the block doesn't have any
-		// transactions in it.
-		if height < snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			return &types.Block{
-				BlockIdentifier:       blockIdentifier,
-				ParentBlockIdentifier: parentBlockIdentifier,
-				Timestamp:             int64(block.Header.TstampSecs) * 1000,
-				Transactions:          []*types.Transaction{},
-			}
-		}
-
 		// If we're right at the snapshot height, then we have to return a *special* block
 		// with a *special* txn that consolidates *all* of the balances in our db.
-		if height == snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			balances, lockedBalances := node.Index.GetHypersyncBalanceSnapshot()
+		if height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+			balances, lockedBalances := node.Index.BlockHeightToHypersyncFakeBalanceSnapshot(
+				uint64(blockIdentifier.Index), snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
+
+			lower, upper := BlockHeightToHypersyncFakeBalanceRange(height, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
+			glog.Infof(lib.CLog(lib.Yellow, fmt.Sprintf("Getting block at height (%v) and balances (%v) "+
+				"and lockedBalances (%v), lower (%v), upper (%v)", height, len(balances), len(lockedBalances), lower, upper)))
+			// If we're at the first block or somethign went wrong, then we pretend the block doesn't have any
+			// transactions in it.
+			if balances == nil || lockedBalances == nil {
+				return &types.Block{
+					BlockIdentifier:       blockIdentifier,
+					ParentBlockIdentifier: parentBlockIdentifier,
+					Timestamp:             int64(block.Header.TstampSecs) * 1000,
+					Transactions:          []*types.Transaction{},
+				}
+			}
+
+			// We create a fake block that will contain a portion of the balances downloaded during hypersync.
+			// The block will contain a single transaction with a transaction hash equal to the reversed block hash.
+			// This is just to get a deterministic hash with some entropy.
+			reverse := func(s string) string {
+				runes := []rune(s)
+				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+					runes[i], runes[j] = runes[j], runes[i]
+				}
+				return string(runes)
+			}
 			transaction := &types.Transaction{
 				TransactionIdentifier: &types.TransactionIdentifier{
-					// This is a random hash for our "genesis" txn
-					Hash: "b62eb824d32af56aa4499ed62720d789548aea978b0fc5cf2571252bb0fef4a8"},
+					Hash: reverse(blockIdentifier.Hash),
+				},
 			}
 
 			var ops []*types.Operation

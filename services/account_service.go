@@ -1,10 +1,12 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"github.com/deso-protocol/rosetta-deso/deso"
+	"github.com/golang/glog"
 	"strconv"
 
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -108,6 +110,7 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 
 func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, block *types.PartialBlockIdentifier) (*types.AccountBalanceResponse, *types.Error) {
 	var desoBlock *lib.MsgDeSoBlock
+	glog.Infof("got in block.Hash != nil (%v) | block.Index != nil (%v)", block.Hash != nil, block.Index != nil)
 	if block.Hash != nil {
 		hashBytes, err := hex.DecodeString(*block.Hash)
 		if err != nil {
@@ -129,72 +132,101 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	}
 
 	blockHash, _ := desoBlock.Hash()
+	blockHeight := desoBlock.Header.Height
 
 	publicKeyBytes, _, err := lib.Base58CheckDecode(account.Address)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 	publicKey := lib.NewPublicKey(publicKeyBytes)
+	glog.Infof("Get balance: pk (%v) blockheight (%v)", hex.EncodeToString(publicKeyBytes), desoBlock.Header.Height)
+	defer glog.Infof("Finished get balance: pk (%v) blockheight (%v)", hex.EncodeToString(publicKeyBytes), desoBlock.Header.Height)
 
 	snapshot := node.Server.GetBlockchain().Snapshot()
 	if snapshot != nil &&
 		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+		snapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
 
 		// If the block is before the snapshot height, we report the historical
 		// balance as zero. See events.go for commentary on this. &&
-		if desoBlock.Header.Height < snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			return &types.AccountBalanceResponse{
-				BlockIdentifier: &types.BlockIdentifier{
-					Hash:  blockHash.String(),
-					Index: int64(desoBlock.Header.Height),
-				},
-				Balances: []*types.Amount{
-					{
-						Value:    strconv.FormatUint(0, 10),
-						Currency: &deso.Currency,
+		glog.Infof("stuck?")
+		if blockHeight <= snapshotHeight {
+			rangeStartBytes, rangeEndBytes := deso.BlockHeightToHypersyncFakeBalanceRange(blockHeight, snapshotHeight)
+			if rangeStartBytes == nil || rangeEndBytes == nil {
+				return &types.AccountBalanceResponse{
+					BlockIdentifier: &types.BlockIdentifier{
+						Hash:  blockHash.String(),
+						Index: int64(blockHeight),
 					},
-				},
-			}, nil
-		}
-
-		// If the block height is equal to the snapshot height, then we have a special case
-		// here as well. See events.go for why this works the way it does.
-		if desoBlock.Header.Height == node.Server.GetBlockchain().Snapshot().CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			balance := uint64(0)
-			if account.SubAccount == nil {
-				balance = node.Index.GetHypersyncSingleBalanceSnapshot(false, publicKey)
-			} else if account.SubAccount.Address == deso.CreatorCoin {
-				balance = node.Index.GetHypersyncSingleBalanceSnapshot(true, publicKey)
+					Balances: []*types.Amount{
+						{
+							Value:    strconv.FormatUint(0, 10),
+							Currency: &deso.Currency,
+						},
+					},
+				}, nil
+			}
+			greaterCondition := bytes.Compare(publicKeyBytes, rangeStartBytes) >= 0
+			// Check that the iterator is below the rangeEnd.
+			lesserCondition := bytes.Compare(publicKeyBytes, rangeEndBytes) < 0
+			valid := greaterCondition
+			if blockHeight < snapshotHeight {
+				valid = valid && lesserCondition
 			}
 
-			// Look up the balances for this height. Just fetch all of them.
-			return &types.AccountBalanceResponse{
-				BlockIdentifier: &types.BlockIdentifier{
-					Hash:  blockHash.String(),
-					Index: int64(desoBlock.Header.Height),
-				},
-				Balances: []*types.Amount{
-					{
-						Value:    strconv.FormatUint(balance, 10),
-						Currency: &deso.Currency,
+			glog.Infof("yeah")
+			if !valid {
+				return &types.AccountBalanceResponse{
+					BlockIdentifier: &types.BlockIdentifier{
+						Hash:  blockHash.String(),
+						Index: int64(blockHeight),
 					},
-				},
-			}, nil
+					Balances: []*types.Amount{
+						{
+							Value:    strconv.FormatUint(0, 10),
+							Currency: &deso.Currency,
+						},
+					},
+				}, nil
+			} else {
+				// If the block height is equal to the snapshot height, then we have a special case
+				// here as well. See events.go for why this works the way it does.
+				balance := uint64(0)
+				if account.SubAccount == nil {
+					balance = node.Index.GetHypersyncSingleBalanceSnapshot(false, publicKey)
+				} else if account.SubAccount.Address == deso.CreatorCoin {
+					balance = node.Index.GetHypersyncSingleBalanceSnapshot(true, publicKey)
+				}
+
+				// Look up the balances for this height. Just fetch all of them.
+				return &types.AccountBalanceResponse{
+					BlockIdentifier: &types.BlockIdentifier{
+						Hash:  blockHash.String(),
+						Index: int64(blockHeight),
+					},
+					Balances: []*types.Amount{
+						{
+							Value:    strconv.FormatUint(balance, 10),
+							Currency: &deso.Currency,
+						},
+					},
+				}, nil
+			}
 		}
 	}
 
 	var balance uint64
 	if account.SubAccount == nil {
-		balance = node.Index.GetBalanceSnapshot(false, publicKey, desoBlock.Header.Height)
+		balance = node.Index.GetBalanceSnapshot(false, publicKey, blockHeight)
 	} else if account.SubAccount.Address == deso.CreatorCoin {
-		balance = node.Index.GetBalanceSnapshot(true, publicKey, desoBlock.Header.Height)
+		balance = node.Index.GetBalanceSnapshot(true, publicKey, blockHeight)
 	}
 
 	//fmt.Printf("height: %v, addr (cc): %v, bal: %v\n", desoBlock.Header.Height, lib.PkToStringTestnet(publicKeyBytes), balance)
 	return &types.AccountBalanceResponse{
 		BlockIdentifier: &types.BlockIdentifier{
 			Hash:  blockHash.String(),
-			Index: int64(desoBlock.Header.Height),
+			Index: int64(blockHeight),
 		},
 		Balances: []*types.Amount{
 			{
