@@ -1,10 +1,11 @@
 package deso
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/golang/glog"
+	"sort"
 	"strconv"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -205,22 +206,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 		// If we're right at the snapshot height, then we have to return a *special* block
 		// with a *special* txn that consolidates *all* of the balances in our db.
 		if height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			balances, lockedBalances := node.Index.BlockHeightToHypersyncFakeBalanceSnapshot(
-				uint64(blockIdentifier.Index), snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
-
-			lower, upper := BlockHeightToHypersyncFakeBalanceRange(height, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
-			glog.Infof(lib.CLog(lib.Yellow, fmt.Sprintf("Getting block at height (%v) and balances (%v) "+
-				"and lockedBalances (%v), lower (%v), upper (%v)", height, len(balances), len(lockedBalances), lower, upper)))
-			// If we're at the first block or somethign went wrong, then we pretend the block doesn't have any
-			// transactions in it.
-			if balances == nil || lockedBalances == nil {
-				return &types.Block{
-					BlockIdentifier:       blockIdentifier,
-					ParentBlockIdentifier: parentBlockIdentifier,
-					Timestamp:             int64(block.Header.TstampSecs) * 1000,
-					Transactions:          []*types.Transaction{},
-				}
-			}
+			balances, lockedBalances := node.Index.GetHypersyncBlockBalances(height)
 
 			// We create a fake block that will contain a portion of the balances downloaded during hypersync.
 			// The block will contain a single transaction with a transaction hash equal to the reversed block hash.
@@ -232,63 +218,74 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				}
 				return string(runes)
 			}
-			transaction := &types.Transaction{
-				TransactionIdentifier: &types.TransactionIdentifier{
-					Hash: reverse(blockIdentifier.Hash),
-				},
-			}
-
-			var ops []*types.Operation
-			for kk, vv := range balances {
-				// As an optimization, don't add operations for zero balances.
-				if vv == 0 {
+			currentHash := reverse(blockIdentifier.Hash)
+			var transactions []*types.Transaction
+			for pk, balance := range balances {
+				if balance == 0 {
 					continue
 				}
 
-				accountIdentifier := &types.AccountIdentifier{
-					Address: lib.Base58CheckEncode(kk[:], false, node.Params),
-				}
-				op := &types.Operation{
-					OperationIdentifier: &types.OperationIdentifier{
-						Index: int64(len(ops)),
+				nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+				currentHash = string(nextHash[:])
+				transactions = append(transactions, &types.Transaction{
+					TransactionIdentifier: &types.TransactionIdentifier{
+						Hash: nextHash.String(),
 					},
-					Account: accountIdentifier,
-					Amount: &types.Amount{
-						Value:    strconv.FormatUint(vv, 10),
-						Currency: &Currency,
-					},
-					Status: &SuccessStatus,
-					Type:   OutputOpType,
-				}
-				ops = append(ops, op)
+					Operations: squashOperations([]*types.Operation{
+						{
+							OperationIdentifier: &types.OperationIdentifier{
+								Index: 0,
+							},
+							Account: &types.AccountIdentifier{
+								Address: lib.Base58CheckEncode(pk[:], false, node.Params),
+							},
+							Amount: &types.Amount{
+								Value:    strconv.FormatUint(balance, 10),
+								Currency: &Currency,
+							},
+							Status: &SuccessStatus,
+							Type:   OutputOpType,
+						},
+					}),
+				})
 			}
-			for kk, vv := range lockedBalances {
-				// As an optimization, don't add operations for zero balances.
-				if vv == 0 {
+			for pk, balance := range lockedBalances {
+				if balance == 0 {
 					continue
 				}
 
-				accountIdentifier := &types.AccountIdentifier{
-					Address: lib.PkToString(kk[:], node.Params),
-					SubAccount: &types.SubAccountIdentifier{
-						Address: CreatorCoin,
+				nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+				currentHash = string(nextHash[:])
+				transactions = append(transactions, &types.Transaction{
+					TransactionIdentifier: &types.TransactionIdentifier{
+						Hash: nextHash.String(),
 					},
-				}
-				op := &types.Operation{
-					OperationIdentifier: &types.OperationIdentifier{
-						Index: int64(len(ops)),
-					},
-					Account: accountIdentifier,
-					Amount: &types.Amount{
-						Value:    strconv.FormatUint(vv, 10),
-						Currency: &Currency,
-					},
-					Status: &SuccessStatus,
-					Type:   OutputOpType,
-				}
-				ops = append(ops, op)
+					Operations: squashOperations([]*types.Operation{
+						{
+							OperationIdentifier: &types.OperationIdentifier{
+								Index: 0,
+							},
+							Account: &types.AccountIdentifier{
+								Address: lib.Base58CheckEncode(pk[:], false, node.Params),
+								SubAccount: &types.SubAccountIdentifier{
+									Address: CreatorCoin,
+								},
+							},
+							Amount: &types.Amount{
+								Value:    strconv.FormatUint(balance, 10),
+								Currency: &Currency,
+							},
+							Status: &SuccessStatus,
+							Type:   OutputOpType,
+						},
+					}),
+				})
 			}
-			transaction.Operations = squashOperations(ops)
+
+			sort.Slice(transactions, func(ii, jj int) bool {
+				return bytes.Compare([]byte(transactions[ii].TransactionIdentifier.Hash),
+					[]byte(transactions[jj].TransactionIdentifier.Hash)) > 0
+			})
 
 			// We return a mega-fake-genesis block with all the hypersync account balances
 			// bootstrapped via output operations
@@ -296,7 +293,7 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 				BlockIdentifier:       blockIdentifier,
 				ParentBlockIdentifier: parentBlockIdentifier,
 				Timestamp:             int64(block.Header.TstampSecs) * 1000,
-				Transactions:          []*types.Transaction{transaction},
+				Transactions:          transactions,
 			}
 		}
 	}
@@ -750,7 +747,6 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.
 }
 
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
-
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
 

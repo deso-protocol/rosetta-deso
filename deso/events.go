@@ -28,6 +28,7 @@ func (node *Node) handleSnapshotCompleted() {
 		// The above basically makes it so that the "genesis" for Rosetta is
 		// the snapshot height rather than the true genesis. This allows us to pass
 		// check:data without introducing complications for Coinbase.
+		snapshotBlockHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
 		{
 			// Iterate through every single public key and put a balance snapshot down
 			// for it for this block. We don't need to worry about ancestral records here
@@ -39,6 +40,20 @@ func (node *Node) handleSnapshotCompleted() {
 					nodeIterator := chainTxn.NewIterator(opts)
 					defer nodeIterator.Close()
 					prefix := lib.Prefixes.PrefixPublicKeyToDeSoBalanceNanos
+
+					// Partition the balances across the blocks before the snapshot block height.
+					totalCount := uint64(0)
+					for nodeIterator.Seek(prefix); nodeIterator.ValidForPrefix(prefix); nodeIterator.Next() {
+						totalCount++
+					}
+					currentBlockHeight := uint64(1)
+					balancesPerBlock := totalCount / snapshotBlockHeight
+					balancesMap := make(map[lib.PublicKey]uint64)
+					if totalCount < snapshotBlockHeight {
+						balancesPerBlock = 1
+					}
+					currentCounter := uint64(0)
+
 					for nodeIterator.Seek(prefix); nodeIterator.ValidForPrefix(prefix); nodeIterator.Next() {
 						key := nodeIterator.Item().Key()
 						keyCopy := make([]byte, len(key))
@@ -52,18 +67,25 @@ func (node *Node) handleSnapshotCompleted() {
 
 						balance := lib.DecodeUint64(valCopy)
 						pubKey := lib.NewPublicKey(key[1:])
-						if err := node.Index.PutHypersyncSingleBalanceSnapshotWithTxn(
-							indexTxn, false, *pubKey, balance); err != nil {
-							return errors.Wrapf(err, "Problem updating hypersync balance "+
-								"snapshot in index, on key (%v) and value (%v)", keyCopy, valCopy)
-						}
+						balancesMap[*pubKey] = balance
+
 						if err := node.Index.PutSingleBalanceSnapshotWithTxn(
-							indexTxn, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
-							false, *pubKey, balance); err != nil {
+							indexTxn, currentBlockHeight, false, *pubKey, balance); err != nil {
 							return errors.Wrapf(err, "Problem updating balance snapshot in index, "+
 								"on key (%v), value (%v), and height (%v)", keyCopy, valCopy,
 								snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
 						}
+
+						currentCounter += 1
+						if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
+							node.Index.PutHypersyncBlockBalances(currentBlockHeight, false, balancesMap)
+							balancesMap = make(map[lib.PublicKey]uint64)
+							currentBlockHeight++
+							currentCounter = 0
+						}
+					}
+					if currentCounter > 0 {
+						node.Index.PutHypersyncBlockBalances(currentBlockHeight, false, balancesMap)
 					}
 					return nil
 				})
@@ -95,6 +117,19 @@ func (node *Node) handleSnapshotCompleted() {
 
 					it := chainTxn.NewIterator(opts)
 					defer it.Close()
+
+					totalCount := uint64(0)
+					for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
+						totalCount++
+					}
+					currentBlockHeight := uint64(1)
+					balancesPerBlock := totalCount / snapshotBlockHeight
+					balancesMap := make(map[lib.PublicKey]uint64)
+					if totalCount < snapshotBlockHeight {
+						balancesPerBlock = 1
+					}
+					currentCounter := uint64(0)
+
 					// Since we iterate backwards, the prefix must be bigger than all possible
 					// counts that could actually exist. We use eight bytes since the count is
 					// encoded as a 64-bit big-endian byte slice, which will be eight bytes long.
@@ -126,23 +161,28 @@ func (node *Node) handleSnapshotCompleted() {
 								lib.PkToStringMainnet(profilePKID[:]))
 						}
 						pubKey := *lib.NewPublicKey(pkBytes)
-						if err := node.Index.PutHypersyncSingleBalanceSnapshotWithTxn(
-							indexTxn, true, pubKey, lockedDeSoNanos); err != nil {
-
-							return errors.Wrapf(err, "PutHypersyncSingleBalanceSnapshotWithTxn: problem with "+
-								"pubkey (%v) lockedDeSoNanos (%v)", pubKey, lockedDeSoNanos)
-						}
+						balancesMap[pubKey] = lockedDeSoNanos
 
 						// We have to also put the balances in the other index. Not doing this would cause
 						// balances to return zero when we're PAST the first snapshot block height.
 						if err := node.Index.PutSingleBalanceSnapshotWithTxn(
-							indexTxn, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
-							true, pubKey, lockedDeSoNanos); err != nil {
+							indexTxn, currentBlockHeight, true, pubKey, lockedDeSoNanos); err != nil {
 
 							return errors.Wrapf(err, "PutSingleBalanceSnapshotWithTxn: problem with "+
 								"pubkey (%v), lockedDeSoNanos (%v) and firstSnapshotHeight (%v)",
 								pubKey, lockedDeSoNanos, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
 						}
+
+						currentCounter += 1
+						if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
+							node.Index.PutHypersyncBlockBalances(currentBlockHeight, true, balancesMap)
+							balancesMap = make(map[lib.PublicKey]uint64)
+							currentBlockHeight++
+							currentCounter = 0
+						}
+					}
+					if currentCounter > 0 {
+						node.Index.PutHypersyncBlockBalances(currentBlockHeight, true, balancesMap)
 					}
 					return nil
 				})

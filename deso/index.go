@@ -2,9 +2,7 @@ package deso
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/gob"
-	"fmt"
 	"github.com/deso-protocol/core/lib"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/glog"
@@ -27,6 +25,8 @@ const (
 	// See comments in events.go for more details.
 	// <prefix, publicKey 33 bytes, isLocked 1 byte> -> <uint64>
 	PrefixHypersyncGenesisBalanceSnapshot = byte(3)
+
+	PrefixHypersyncBlockHeightToBalances = byte(4)
 )
 
 type Index struct {
@@ -108,234 +108,74 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHei
 	return prefix
 }
 
-func hypersyncBalanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey) []byte {
+func hypersyncHeightToBlockKey(blockHeight uint64, isLocked bool) []byte {
 
-	lockedPrefix := byte(0)
-	if isLockedBalance {
-		lockedPrefix = byte(1)
+	lockedByte := byte(0)
+	if isLocked {
+		lockedByte = byte(1)
 	}
 
-	prefix := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
-	prefix = append(prefix, lockedPrefix)
-	prefix = append(prefix, publicKey[:]...)
+	prefix := append([]byte{}, PrefixHypersyncBlockHeightToBalances)
+	prefix = append(prefix, lib.EncodeUint64(blockHeight)...)
+	prefix = append(prefix, lockedByte)
 	return prefix
 }
 
-func BlockHeightToHypersyncFakeBalanceRange(blockHeight uint64, firstSnapshotBlockHeight uint64) (
-	_rangeStartBytes []byte, _rangeEndBytes []byte) {
-
-	if blockHeight == 0 {
-		return nil, nil
-	}
-
-	isSnapshotHeight := false
-	if blockHeight > firstSnapshotBlockHeight {
-		return nil, nil
-	} else if blockHeight == firstSnapshotBlockHeight {
-		isSnapshotHeight = true
-	}
-
-	divider := math.MaxUint64 / firstSnapshotBlockHeight
-	rangeStart := divider * (blockHeight - 1)
-	rangeEnd := rangeStart
-	if !isSnapshotHeight {
-		rangeEnd += divider
-	}
-
-	rangeStartBytes := make([]byte, 8)
-	rangeEndBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(rangeStartBytes, rangeStart)
-	binary.BigEndian.PutUint64(rangeEndBytes, rangeEnd)
-	return rangeStartBytes, rangeEndBytes
+type hyperSyncBlock struct {
+	balances       map[lib.PublicKey]uint64
+	lockedBalances map[lib.PublicKey]uint64
 }
 
-func (index *Index) BlockHeightToHypersyncFakeBalanceSnapshot(blockHeight uint64, firstSnapshotBlockHeight uint64) (
-	_balances map[lib.PublicKey]uint64,
-	_lockedBalances map[lib.PublicKey]uint64) {
+func (index *Index) PutHypersyncBlockBalances(blockHeight uint64, isLocked bool, balances map[lib.PublicKey]uint64) {
 
-	if blockHeight == 0 {
-		index.db.View(func(txn *badger.Txn) error {
-			keys, _ := lib.EnumerateKeysForPrefix(
-				index.db, []byte{PrefixHypersyncGenesisBalanceSnapshot})
-			minKey := keys[0]
-			for _, key := range keys {
-				if bytes.Compare(minKey, key) == 1 {
-					minKey = key
-				}
-			}
-			maxKey := keys[0]
-			for _, key := range keys {
-				if bytes.Compare(maxKey, key) == -1 {
-					maxKey = key
-				}
-			}
-			glog.Infof(lib.CLog(lib.Green, fmt.Sprintf("MIN KEY (%v) MAX KEY (%v)", minKey, maxKey)))
-			return nil
-		})
-	}
-
-	rangeStartBytes, rangeEndBytes := BlockHeightToHypersyncFakeBalanceRange(blockHeight, firstSnapshotBlockHeight)
-	if rangeStartBytes == nil || rangeEndBytes == nil {
-		return nil, nil
-	}
-	isSnapshotHeight := blockHeight == firstSnapshotBlockHeight
-
-	iteratorRangeCondition := func(it *badger.Iterator, prefix []byte) bool {
-		glog.Infof(lib.CLog(lib.Magenta, fmt.Sprintf("got in valid for prefix (%v), prefix (%v)", it.ValidForPrefix(prefix), prefix)))
-		if !it.ValidForPrefix(prefix) {
-			return false
+	err := index.db.Update(func(txn *badger.Txn) error {
+		blockBytes := bytes.NewBuffer([]byte{})
+		if err := gob.NewEncoder(blockBytes).Encode(&balances); err != nil {
+			return err
 		}
-
-		// Check that the iterator is equal/above the rangeStart
-		key := it.Item().Key()
-		if len(key) < 10 {
-			panic("Key is not populated")
-		}
-		trimmedKey := key[2:10]
-		greaterCondition := bytes.Compare(trimmedKey, rangeStartBytes) >= 0
-		// Check that the iterator is below the rangeEnd.
-		lesserCondition := bytes.Compare(trimmedKey, rangeEndBytes) < 0
-
-		glog.Infof(lib.CLog(lib.Magenta, fmt.Sprintf("rangeStartBytes (%v), rangeEndBytes (%v), trimmedKey (%v),"+
-			"greatedCondition (%v), lesserCondition (%v)", rangeStartBytes, rangeEndBytes, trimmedKey, greaterCondition, lesserCondition)))
-		// If we're at the snapshot height, we'll only return greater condition. We want to fetch all remaining balances
-		// so there is no upperbound.
-		if isSnapshotHeight {
-			return greaterCondition
-		}
-
-		// Otherwise, we'll also return the lesserCondition.
-		return greaterCondition && lesserCondition
+		return txn.Set(hypersyncHeightToBlockKey(blockHeight, isLocked), blockBytes.Bytes())
+	})
+	if err != nil {
+		glog.Error(errors.Wrapf(err, "PutHypersyncBlockBalances: Problem putting block: Error:"))
 	}
+}
+
+func (index *Index) GetHypersyncBlockBalances(blockHeight uint64) (
+	_balances map[lib.PublicKey]uint64, _lockedBalances map[lib.PublicKey]uint64) {
 
 	balances := make(map[lib.PublicKey]uint64)
 	lockedBalances := make(map[lib.PublicKey]uint64)
-	// First lookup regular balances.
 	err := index.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		balancePrefix := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
-		balancePrefix = append(balancePrefix, 0)
-		balancePrefix = append(balancePrefix, rangeStartBytes...)
-		for it.Seek(balancePrefix); iteratorRangeCondition(it, balancePrefix); it.Next() {
-			pkBytes := it.Item().Key()[2:]
-			balanceBytes, err := it.Item().ValueCopy(nil)
-			if err != nil {
-				return errors.Wrapf(err, "Problem in balances")
-			}
-			balance := lib.DecodeUint64(balanceBytes)
-			balances[*lib.NewPublicKey(pkBytes)] = balance
+		itemBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, false))
+		if err != nil {
+			return err
+		}
+		balancesBytes, err := itemBalances.ValueCopy(nil)
+		if err != nil {
+			return err
+		}
+		if err := gob.NewDecoder(bytes.NewReader(balancesBytes)).Decode(&balances); err != nil {
+			return err
 		}
 
-		lockedBalancePrefix := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
-		lockedBalancePrefix = append(lockedBalancePrefix, 1)
-		lockedBalancePrefix = append(lockedBalancePrefix, rangeStartBytes...)
-		for it.Seek(lockedBalancePrefix); iteratorRangeCondition(it, lockedBalancePrefix); it.Next() {
-			pkBytes := it.Item().Key()[2:]
-			lockedBalanceBytes, err := it.Item().ValueCopy(nil)
-			if err != nil {
-				return errors.Wrapf(err, "Problem in locked balances")
-			}
-			lockedBalance := lib.DecodeUint64(lockedBalanceBytes)
-			lockedBalances[*lib.NewPublicKey(pkBytes)] = lockedBalance
+		itemLocked, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, true))
+		if err != nil {
+			return err
+		}
+		lockedBytes, err := itemLocked.ValueCopy(nil)
+		if err != nil {
+			return err
+		}
+		if err := gob.NewDecoder(bytes.NewReader(lockedBytes)).Decode(&lockedBalances); err != nil {
+			return err
 		}
 		return nil
 	})
 	if err != nil {
-		glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("blockHeightToHypersyncFakeBalanceSnapshot: Problem reading "+
-			"balances: error: (%v)", err)))
+		glog.Error(errors.Wrapf(err, "GetHypersyncBlockBalances: Problem getting block at height (%v): Error:", blockHeight))
 	}
 
 	return balances, lockedBalances
-}
-
-func (index *Index) GetHypersyncBalanceSnapshot() (
-	_balances map[lib.PublicKey]uint64,
-	_lockedBalances map[lib.PublicKey]uint64) {
-
-	balances := make(map[lib.PublicKey]uint64)
-	lockedBalances := make(map[lib.PublicKey]uint64)
-
-	publicKeysWithIsLocked, balBytesList := lib.EnumerateKeysForPrefix(
-		index.db, []byte{PrefixHypersyncGenesisBalanceSnapshot})
-	for ii, kk := range publicKeysWithIsLocked {
-		pkBytes := kk[2:]
-		bal := lib.DecodeUint64(balBytesList[ii])
-
-		isLockedByte := kk[1]
-		if isLockedByte == byte(0) {
-			balances[*lib.NewPublicKey(pkBytes)] = bal
-		} else {
-			lockedBalances[*lib.NewPublicKey(pkBytes)] = bal
-		}
-	}
-
-	return balances, lockedBalances
-}
-
-func (index *Index) GetHypersyncSingleBalanceSnapshot(isLockedBalance bool, publicKey *lib.PublicKey) uint64 {
-
-	var balance uint64
-	index.db.View(func(txn *badger.Txn) error {
-		key := hypersyncBalanceSnapshotKey(isLockedBalance, publicKey)
-		item, err := txn.Get(key)
-		if err != nil {
-			balance = 0
-			return nil
-		}
-		balanceBytes, _ := item.ValueCopy(nil)
-		balance = lib.DecodeUint64(balanceBytes)
-		return nil
-	})
-	return balance
-}
-
-func (index *Index) PutHypersyncBalanceSnapshot(
-	isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
-
-	return index.db.Update(func(txn *badger.Txn) error {
-		return index.PutHypersyncBalanceSnapshotWithTxn(txn, isLockedBalance, balances)
-	})
-}
-
-func (index *Index) PutHypersyncBalanceSnapshotWithTxn(
-	txn *badger.Txn, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
-
-	isLockedPrefix := byte(0)
-	if isLockedBalance {
-		isLockedPrefix = byte(1)
-	}
-
-	for pk, bal := range balances {
-		pubKeyAndIsLocked := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
-		pubKeyAndIsLocked = append(pubKeyAndIsLocked, isLockedPrefix)
-		pubKeyAndIsLocked = append(pubKeyAndIsLocked, pk[:]...)
-		if err := txn.Set(pubKeyAndIsLocked, lib.EncodeUint64(bal)); err != nil {
-			return errors.Wrapf(err, "PutHypersyncBalanceSnapshotWithTxn: Error for isLockedPrefix: "+
-				"%v pub key: %v balance: %v", isLockedPrefix, pk, bal)
-		}
-	}
-	return nil
-}
-
-func (index *Index) PutHypersyncSingleBalanceSnapshotWithTxn(
-	txn *badger.Txn, isLockedBalance bool, publicKey lib.PublicKey, balance uint64) error {
-
-	isLockedPrefix := byte(0)
-	if isLockedBalance {
-		isLockedPrefix = byte(1)
-	}
-
-	pubKeyAndIsLocked := append([]byte{}, PrefixHypersyncGenesisBalanceSnapshot)
-	pubKeyAndIsLocked = append(pubKeyAndIsLocked, isLockedPrefix)
-	pubKeyAndIsLocked = append(pubKeyAndIsLocked, publicKey[:]...)
-	if err := txn.Set(pubKeyAndIsLocked, lib.EncodeUint64(balance)); err != nil {
-		return errors.Wrapf(err, "PutHypersyncSingleBalanceSnapshotWithTxn: Error for isLockedPrefix: "+
-			"%v pub key: %v balance: %v", isLockedPrefix, publicKey, balance)
-	}
-	return nil
 }
 
 func (index *Index) PutBalanceSnapshot(
