@@ -1,11 +1,11 @@
 package deso
 
 import (
-	"bytes"
+	//"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sort"
+	//"sort"
 	"strconv"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -199,104 +199,104 @@ func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
 	// If we're at the first snapshot height, we do something special. We need to return a
 	// "fake genesis" block that consolidates all balances up to this point. See commentary
 	// in events.go for more detail on how this works.
-	snapshot := node.Server.GetBlockchain().Snapshot()
-	if snapshot != nil &&
-		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
-
-		// If we're right at the snapshot height, then we have to return a *special* block
-		// with a *special* txn that consolidates *all* of the balances in our db.
-		if height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			balances, lockedBalances := node.Index.GetHypersyncBlockBalances(height)
-
-			// We create a fake block that will contain a portion of the balances downloaded during hypersync.
-			// The block will contain a single transaction with a transaction hash equal to the reversed block hash.
-			// This is just to get a deterministic hash with some entropy.
-			reverse := func(s string) string {
-				runes := []rune(s)
-				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-					runes[i], runes[j] = runes[j], runes[i]
-				}
-				return string(runes)
-			}
-			currentHash := reverse(blockIdentifier.Hash)
-			var transactions []*types.Transaction
-			for pk, balance := range balances {
-				if balance == 0 {
-					continue
-				}
-
-				nextHash := lib.Sha256DoubleHash([]byte(currentHash))
-				currentHash = string(nextHash[:])
-				transactions = append(transactions, &types.Transaction{
-					TransactionIdentifier: &types.TransactionIdentifier{
-						Hash: nextHash.String(),
-					},
-					Operations: squashOperations([]*types.Operation{
-						{
-							OperationIdentifier: &types.OperationIdentifier{
-								Index: 0,
-							},
-							Account: &types.AccountIdentifier{
-								Address: lib.Base58CheckEncode(pk[:], false, node.Params),
-							},
-							Amount: &types.Amount{
-								Value:    strconv.FormatUint(balance, 10),
-								Currency: &Currency,
-							},
-							Status: &SuccessStatus,
-							Type:   OutputOpType,
-						},
-					}),
-				})
-			}
-			for pk, balance := range lockedBalances {
-				if balance == 0 {
-					continue
-				}
-
-				nextHash := lib.Sha256DoubleHash([]byte(currentHash))
-				currentHash = string(nextHash[:])
-				transactions = append(transactions, &types.Transaction{
-					TransactionIdentifier: &types.TransactionIdentifier{
-						Hash: nextHash.String(),
-					},
-					Operations: squashOperations([]*types.Operation{
-						{
-							OperationIdentifier: &types.OperationIdentifier{
-								Index: 0,
-							},
-							Account: &types.AccountIdentifier{
-								Address: lib.Base58CheckEncode(pk[:], false, node.Params),
-								SubAccount: &types.SubAccountIdentifier{
-									Address: CreatorCoin,
-								},
-							},
-							Amount: &types.Amount{
-								Value:    strconv.FormatUint(balance, 10),
-								Currency: &Currency,
-							},
-							Status: &SuccessStatus,
-							Type:   OutputOpType,
-						},
-					}),
-				})
-			}
-
-			sort.Slice(transactions, func(ii, jj int) bool {
-				return bytes.Compare([]byte(transactions[ii].TransactionIdentifier.Hash),
-					[]byte(transactions[jj].TransactionIdentifier.Hash)) > 0
-			})
-
-			// We return a mega-fake-genesis block with all the hypersync account balances
-			// bootstrapped via output operations
-			return &types.Block{
-				BlockIdentifier:       blockIdentifier,
-				ParentBlockIdentifier: parentBlockIdentifier,
-				Timestamp:             int64(block.Header.TstampSecs) * 1000,
-				Transactions:          transactions,
-			}
-		}
-	}
+	//snapshot := node.Server.GetBlockchain().Snapshot()
+	//if snapshot != nil &&
+	//	snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+	//
+	//	// If we're right at the snapshot height, then we have to return a *special* block
+	//	// with a *special* txn that consolidates *all* of the balances in our db.
+	//	if height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+	//		balances, lockedBalances := node.Index.GetHypersyncBlockBalances(height)
+	//
+	//		// We create a fake block that will contain a portion of the balances downloaded during hypersync.
+	//		// The block will contain a single transaction with a transaction hash equal to the reversed block hash.
+	//		// This is just to get a deterministic hash with some entropy.
+	//		reverse := func(s string) string {
+	//			runes := []rune(s)
+	//			for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+	//				runes[i], runes[j] = runes[j], runes[i]
+	//			}
+	//			return string(runes)
+	//		}
+	//		currentHash := reverse(blockIdentifier.Hash)
+	//		var transactions []*types.Transaction
+	//		for pk, balance := range balances {
+	//			if balance == 0 {
+	//				continue
+	//			}
+	//
+	//			nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+	//			currentHash = string(nextHash[:])
+	//			transactions = append(transactions, &types.Transaction{
+	//				TransactionIdentifier: &types.TransactionIdentifier{
+	//					Hash: nextHash.String(),
+	//				},
+	//				Operations: squashOperations([]*types.Operation{
+	//					{
+	//						OperationIdentifier: &types.OperationIdentifier{
+	//							Index: 0,
+	//						},
+	//						Account: &types.AccountIdentifier{
+	//							Address: lib.Base58CheckEncode(pk[:], false, node.Params),
+	//						},
+	//						Amount: &types.Amount{
+	//							Value:    strconv.FormatUint(balance, 10),
+	//							Currency: &Currency,
+	//						},
+	//						Status: &SuccessStatus,
+	//						Type:   OutputOpType,
+	//					},
+	//				}),
+	//			})
+	//		}
+	//		for pk, balance := range lockedBalances {
+	//			if balance == 0 {
+	//				continue
+	//			}
+	//
+	//			nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+	//			currentHash = string(nextHash[:])
+	//			transactions = append(transactions, &types.Transaction{
+	//				TransactionIdentifier: &types.TransactionIdentifier{
+	//					Hash: nextHash.String(),
+	//				},
+	//				Operations: squashOperations([]*types.Operation{
+	//					{
+	//						OperationIdentifier: &types.OperationIdentifier{
+	//							Index: 0,
+	//						},
+	//						Account: &types.AccountIdentifier{
+	//							Address: lib.Base58CheckEncode(pk[:], false, node.Params),
+	//							SubAccount: &types.SubAccountIdentifier{
+	//								Address: CreatorCoin,
+	//							},
+	//						},
+	//						Amount: &types.Amount{
+	//							Value:    strconv.FormatUint(balance, 10),
+	//							Currency: &Currency,
+	//						},
+	//						Status: &SuccessStatus,
+	//						Type:   OutputOpType,
+	//					},
+	//				}),
+	//			})
+	//		}
+	//
+	//		sort.Slice(transactions, func(ii, jj int) bool {
+	//			return bytes.Compare([]byte(transactions[ii].TransactionIdentifier.Hash),
+	//				[]byte(transactions[jj].TransactionIdentifier.Hash)) > 0
+	//		})
+	//
+	//		// We return a mega-fake-genesis block with all the hypersync account balances
+	//		// bootstrapped via output operations
+	//		return &types.Block{
+	//			BlockIdentifier:       blockIdentifier,
+	//			ParentBlockIdentifier: parentBlockIdentifier,
+	//			Timestamp:             int64(block.Header.TstampSecs) * 1000,
+	//			Transactions:          transactions,
+	//		}
+	//	}
+	//}
 
 	// If we get here, we know we either don't have a snapshot, or we're past the first
 	// snapshot height. This means we need to parse and return the transaction operations

@@ -10,6 +10,7 @@ import (
 )
 
 func (node *Node) handleSnapshotCompleted() {
+	return
 	// We do some special logic if we have a snapshot.
 	snapshot := node.Server.GetBlockchain().Snapshot()
 	if snapshot != nil &&
@@ -199,20 +200,20 @@ func (node *Node) handleSnapshotCompleted() {
 
 func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	// We do some special logic if we have a snapshot.
-	if node.Server != nil {
-		snapshot := node.Server.GetBlockchain().Snapshot()
-		if snapshot != nil &&
-			snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
-
-			firstSnapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
-
-			// If we're before the first snapshot height, then do nothing.
-			height := event.Block.Header.Height
-			if height <= firstSnapshotHeight {
-				return
-			}
-		}
-	}
+	//if node.Server != nil {
+	//	snapshot := node.Server.GetBlockchain().Snapshot()
+	//	if snapshot != nil &&
+	//		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+	//
+	//		firstSnapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
+	//
+	//		// If we're before the first snapshot height, then do nothing.
+	//		height := event.Block.Header.Height
+	//		if height <= firstSnapshotHeight {
+	//			return
+	//		}
+	//	}
+	//}
 	// If we get here, then we're connecting a block after the first snapshot OR we
 	// don't have a snapshot. We output extra metadata for this block to ensure
 	// Rosetta connects it appropriately.
