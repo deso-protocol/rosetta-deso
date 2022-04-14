@@ -23,11 +23,9 @@ const (
 	PrefixLockedBalanceSnapshots = byte(2)
 
 	// Fake genesis balances we use to initialize Rosetta when running hypersync.
-	// See comments in events.go for more details.
-	// <prefix, publicKey 33 bytes, isLocked 1 byte> -> <uint64>
-	PrefixHypersyncGenesisBalanceSnapshot = byte(3)
-
-	PrefixHypersyncBlockHeightToBalances = byte(4)
+	// See comments in block.go and convertBlock() for more details.
+	// <prefix 1 byte, blockHeight 8 bytes, isLocked 1 byte> -> map[lib.PublicKey]uint64
+	PrefixHypersyncBlockHeightToBalances = byte(3)
 )
 
 type Index struct {
@@ -57,14 +55,13 @@ func (index *Index) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*lib.UtxoOpe
 		return err
 	}
 
-	buf := bytes.NewBuffer([]byte{})
-	err = gob.NewEncoder(buf).Encode(utxoOps)
-	if err != nil {
-		return err
+	opBundle := &lib.UtxoOperationBundle{
+		UtxoOpBundle: utxoOps,
 	}
+	bytes := lib.EncodeToBytes(block.Header.Height, opBundle)
 
 	return index.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(index.utxoOpsKey(blockHash), buf.Bytes())
+		return txn.Set(index.utxoOpsKey(blockHash), bytes)
 	})
 }
 
@@ -74,7 +71,7 @@ func (index *Index) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOperation,
 		return nil, err
 	}
 
-	var utxoOps [][]*lib.UtxoOperation
+	opBundle := &lib.UtxoOperationBundle{}
 
 	err = index.db.View(func(txn *badger.Txn) error {
 		utxoOpsItem, err := txn.Get(index.utxoOpsKey(blockHash))
@@ -83,14 +80,18 @@ func (index *Index) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOperation,
 		}
 
 		return utxoOpsItem.Value(func(valBytes []byte) error {
-			return gob.NewDecoder(bytes.NewReader(valBytes)).Decode(&utxoOps)
+			rr := bytes.NewReader(valBytes)
+			if exist, err := lib.DecodeFromBytes(opBundle, rr); !exist || err != nil {
+				return errors.Wrapf(err, "Problem decoding utxoops, exist: (%v)", exist)
+			}
+			return nil
 		})
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return utxoOps, nil
+	return opBundle.UtxoOpBundle, nil
 }
 
 //
@@ -121,11 +122,6 @@ func hypersyncHeightToBlockKey(blockHeight uint64, isLocked bool) []byte {
 	prefix = append(prefix, lib.EncodeUint64(blockHeight)...)
 	prefix = append(prefix, lockedByte)
 	return prefix
-}
-
-type hyperSyncBlock struct {
-	balances       map[lib.PublicKey]uint64
-	lockedBalances map[lib.PublicKey]uint64
 }
 
 func (index *Index) PutHypersyncBlockBalances(blockHeight uint64, isLocked bool, balances map[lib.PublicKey]uint64) {

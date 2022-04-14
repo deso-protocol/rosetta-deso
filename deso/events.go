@@ -205,20 +205,20 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	node.Index.dbMutex.Lock()
 	defer node.Index.dbMutex.Unlock()
 	// We do some special logic if we have a snapshot.
-	//if node.Server != nil {
-	//	snapshot := node.Server.GetBlockchain().Snapshot()
-	//	if snapshot != nil &&
-	//		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
-	//
-	//		firstSnapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
-	//
-	//		// If we're before the first snapshot height, then do nothing.
-	//		height := event.Block.Header.Height
-	//		if height <= firstSnapshotHeight {
-	//			return
-	//		}
-	//	}
-	//}
+	if node.Server != nil {
+		snapshot := node.Server.GetBlockchain().Snapshot()
+		if snapshot != nil &&
+			snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+
+			firstSnapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
+
+			// If we're before the first snapshot height, then do nothing.
+			height := event.Block.Header.Height
+			if height <= firstSnapshotHeight {
+				return
+			}
+		}
+	}
 	// If we get here, then we're connecting a block after the first snapshot OR we
 	// don't have a snapshot. We output extra metadata for this block to ensure
 	// Rosetta connects it appropriately.
@@ -228,7 +228,6 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	err := node.Index.PutUtxoOps(event.Block, event.UtxoOps)
 	if err != nil {
 		glog.Errorf("PutSpentUtxos: %v", err)
-		panic(err)
 	}
 
 	// Save a balance snapshot
@@ -236,7 +235,6 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	err = node.Index.PutBalanceSnapshot(event.Block.Header.Height, false, balances)
 	if err != nil {
 		glog.Errorf("PutBalanceSnapshot: %v", err)
-		panic(err)
 	}
 
 	// Iterate over all PKID mappings to get all public keys that may

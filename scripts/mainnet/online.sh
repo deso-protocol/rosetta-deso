@@ -5,6 +5,4 @@
   --data-directory=/tmp/rosetta-online-mainnet-00025 \
   --hypersync=true \
   --disable-slow-sync=false \
-  --max-sync-block-height=9999
 )
-
