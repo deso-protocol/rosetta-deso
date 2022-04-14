@@ -8,6 +8,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"math"
+	"sync"
 )
 
 const (
@@ -30,7 +31,8 @@ const (
 )
 
 type Index struct {
-	db *badger.DB
+	db      *badger.DB
+	dbMutex sync.Mutex
 }
 
 func NewIndex(db *badger.DB) *Index {

@@ -10,6 +10,9 @@ import (
 )
 
 func (node *Node) handleSnapshotCompleted() {
+	node.Index.dbMutex.Lock()
+	defer node.Index.dbMutex.Unlock()
+
 	return
 	// We do some special logic if we have a snapshot.
 	snapshot := node.Server.GetBlockchain().Snapshot()
@@ -199,6 +202,8 @@ func (node *Node) handleSnapshotCompleted() {
 }
 
 func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
+	node.Index.dbMutex.Lock()
+	defer node.Index.dbMutex.Unlock()
 	// We do some special logic if we have a snapshot.
 	//if node.Server != nil {
 	//	snapshot := node.Server.GetBlockchain().Snapshot()
@@ -223,6 +228,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	err := node.Index.PutUtxoOps(event.Block, event.UtxoOps)
 	if err != nil {
 		glog.Errorf("PutSpentUtxos: %v", err)
+		panic(err)
 	}
 
 	// Save a balance snapshot
@@ -230,6 +236,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	err = node.Index.PutBalanceSnapshot(event.Block.Header.Height, false, balances)
 	if err != nil {
 		glog.Errorf("PutBalanceSnapshot: %v", err)
+		panic(err)
 	}
 
 	// Iterate over all PKID mappings to get all public keys that may
