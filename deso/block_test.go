@@ -72,6 +72,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 		false,
 		false,
 		0,
+		false,
 		rateLimitFeerateNanosPerKB,
 		1000,
 		stallTimeoutSeconds,

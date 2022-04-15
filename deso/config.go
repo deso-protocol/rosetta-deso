@@ -24,6 +24,7 @@ type Config struct {
 	HyperSync              bool
 	DisableSlowSync        bool
 	MaxSyncBlockHeight     uint32
+	ArchivalMode           bool
 
 	// Glog flags
 	LogDirectory string
@@ -79,6 +80,7 @@ func LoadConfig() (*Config, error) {
 
 	result.DisableSlowSync = viper.GetBool("disable-slow-sync")
 	result.MaxSyncBlockHeight = viper.GetUint32("max-sync-block-height")
+	result.ArchivalMode = viper.GetBool("archival-mode")
 
 	return &result, nil
 }
