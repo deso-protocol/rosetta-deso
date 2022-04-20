@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/glog"
+	"github.com/pkg/errors"
 	"sort"
 	"strconv"
 
@@ -37,10 +39,11 @@ func (node *Node) GetBlock(hash string) *types.Block {
 	if height == 0 {
 		parentBlockIdentifier = blockIdentifier
 	} else {
-		parentBlock := blockchain.GetBlock(blockNode.Header.PrevBlockHash)
-		parentBlockHash, _ := parentBlock.Hash()
+		parentBlockNode := blockchain.GetBlockNodeWithHash(blockNode.Header.PrevBlockHash)
+		parentBlockHash, err := parentBlockNode.Header.Hash()
+		glog.Error(errors.Wrapf(err, "GetBlock: Problem fetching parent block ndoe hash"))
 		parentBlockIdentifier = &types.BlockIdentifier{
-			Index: int64(parentBlock.Header.Height),
+			Index: int64(parentBlockNode.Header.Height),
 			Hash:  parentBlockHash.String(),
 		}
 	}
