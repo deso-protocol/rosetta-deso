@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/glog"
 	"sort"
 	"strconv"
 
@@ -22,24 +23,65 @@ func (node *Node) GetBlock(hash string) *types.Block {
 	copy(blockHash[:], hashBytes[:])
 
 	blockchain := node.GetBlockchain()
+	blockNode := blockchain.GetBlockNodeWithHash(blockHash)
+	if blockNode == nil {
+		return nil
+	}
+
+	height := blockNode.Header.Height
+	blockIdentifier := &types.BlockIdentifier{
+		Index: int64(height),
+		Hash:  hash,
+	}
+
+	var parentBlockIdentifier *types.BlockIdentifier
+	if height == 0 {
+		parentBlockIdentifier = blockIdentifier
+	} else {
+		parentBlock := blockchain.GetBlock(blockNode.Header.PrevBlockHash)
+		parentBlockHash, _ := parentBlock.Hash()
+		parentBlockIdentifier = &types.BlockIdentifier{
+			Index: int64(parentBlock.Header.Height),
+			Hash:  parentBlockHash.String(),
+		}
+	}
+
+	// If we've hypersynced the chain, we do something special. We need to return "fake genesis" blocks that
+	// consolidates all balances up to this point. See commentary in events.go for more detail on how this works.
+	snapshot := node.Server.GetBlockchain().Snapshot()
+	if snapshot != nil && snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 &&
+		height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+
+		transactions := node.getBlockTransactionsWithHypersync(height, blockHash)
+		// We return a mega-fake-genesis block with the hypersync account balances bootstrapped via output operations.
+		return &types.Block{
+			BlockIdentifier:       blockIdentifier,
+			ParentBlockIdentifier: parentBlockIdentifier,
+			Timestamp:             int64(blockNode.Header.TstampSecs) * 1000,
+			Transactions:          transactions,
+		}
+	}
+
 	block := blockchain.GetBlock(blockHash)
 	if block == nil {
 		return nil
 	}
-
-	ret := node.convertBlock(block)
-	return ret
+	// If we get here, we know we either don't have a snapshot, or we're past the first
+	// snapshot height. This means we need to parse and return the transaction operations
+	// like usual.
+	return &types.Block{
+		BlockIdentifier:       blockIdentifier,
+		ParentBlockIdentifier: parentBlockIdentifier,
+		Timestamp:             int64(blockNode.Header.TstampSecs) * 1000,
+		Transactions:          node.GetTransactionsForConvertBlock(block),
+	}
 }
 
 func (node *Node) GetBlockAtHeight(height int64) *types.Block {
 	blockchain := node.GetBlockchain()
-	block := blockchain.GetBlockAtHeight(uint32(height))
-	if block == nil {
-		return nil
-	}
+	blockHash := blockchain.BestChain()[height].Hash
 
-	ret := node.convertBlock(block)
-	return ret
+	return node.GetBlock(blockHash.String())
 }
 
 func (node *Node) CurrentBlock() *types.Block {
@@ -173,148 +215,100 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 	return transactions
 }
 
-func (node *Node) convertBlock(block *lib.MsgDeSoBlock) *types.Block {
-	blockchain := node.GetBlockchain()
+func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHash *lib.BlockHash) []*types.Transaction {
+	// With hypersync, we don't necessarily have to download the block history, unless we're in the archival mode.
+	// Otherwise, we'll only download the database snapshot at the FirstSnapshotBlockHeight. Assuming we don't know
+	// the block history, we need to somehow create an "alternative" block history for Rosetta to work. Given the
+	// snapshot, we have information about how much money each account has (single balance), but we don't know
+	// account's transactional history. Our alternative blockchain up to FirstSnapshotBlockHeight, will then
+	// basically consist of fake seed transactions. That is, transactions of type "credit PK with X balance." To make
+	// it somewhat efficient, we will evenly distribute all these fake seed transactions among blocks up to snapshot.
 
-	blockHash, _ := block.Hash()
+	balances, lockedBalances := node.Index.GetHypersyncBlockBalances(blockHeight)
 
-	blockIdentifier := &types.BlockIdentifier{
-		Index: int64(block.Header.Height),
-		Hash:  blockHash.String(),
-	}
-
-	height := block.Header.Height
-	var parentBlockIdentifier *types.BlockIdentifier
-	if height == 0 {
-		parentBlockIdentifier = blockIdentifier
-	} else {
-		parentBlock := blockchain.GetBlock(block.Header.PrevBlockHash)
-		parentBlockHash, _ := parentBlock.Hash()
-		parentBlockIdentifier = &types.BlockIdentifier{
-			Index: int64(parentBlock.Header.Height),
-			Hash:  parentBlockHash.String(),
+	// We create a fake genesis block that will contain a portion of the balances downloaded during hypersync.
+	// In addition, we need to lowkey reinvent these transactions, including, in particular, their transaction
+	// hashes. To make these hashes deterministic and pseudorandom, we will start with a seed hash SH equal to
+	// the reversed hex string of the block hash. This has high entropy, is prone to grinding attacks, and we'll
+	// use it to generate transaction hashes. Each transaction will be a result of the iterated hash
+	// SH <- sha256x2(SH), which is equivalent in collision-resistance to hashing a random string.
+	reverse := func(s string) string {
+		runes := []rune(s)
+		for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+			runes[i], runes[j] = runes[j], runes[i]
 		}
+		return string(runes)
 	}
-
-	// If we're at the first snapshot height, we do something special. We need to return a
-	// "fake genesis" block that consolidates all balances up to this point. See commentary
-	// in events.go for more detail on how this works.
-	snapshot := node.Server.GetBlockchain().Snapshot()
-	if snapshot != nil &&
-		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
-
-		// With hypersync, we don't necessarily have to download the block history, unless we're in the archival mode.
-		// Otherwise, we'll only download the database snapshot at the FirstSnapshotBlockHeight. Assuming we don't know
-		// the block history, we need to somehow create an "alternative" block history for Rosetta to work. Given the
-		// snapshot, we have information about how much money each account has (single balance), but we don't know
-		// account's transactional history. Our alternative blockchain up to FirstSnapshotBlockHeight, will then
-		// basically consist of fake seed transactions. That is, transactions of type "credit PK with X balance." To make
-		// it somewhat efficient, we will evenly distribute all these fake seed transactions among blocks up to snapshot.
-		if height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
-			balances, lockedBalances := node.Index.GetHypersyncBlockBalances(height)
-
-			// We create a fake genesis block that will contain a portion of the balances downloaded during hypersync.
-			// In addition, we need to lowkey reinvent these transactions, including, in particular, their transaction
-			// hashes. To make these hashes deterministic and pseudorandom, we will start with a seed hash SH equal to
-			// the reversed hex string of the block hash. This has high entropy, is prone to grinding attacks, and we'll
-			// use it to generate transaction hashes. Each transaction will be a result of the iterated hash
-			// SH <- sha256x2(SH), which is equivalent in collision-resistance to hashing a random string.
-			reverse := func(s string) string {
-				runes := []rune(s)
-				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-					runes[i], runes[j] = runes[j], runes[i]
-				}
-				return string(runes)
-			}
-			currentHash := reverse(blockIdentifier.Hash)
-			var transactions []*types.Transaction
-			for pk, balance := range balances {
-				if balance == 0 {
-					continue
-				}
-
-				// Here's the iterated hash SH <- sha256x2(SH).
-				nextHash := lib.Sha256DoubleHash([]byte(currentHash))
-				currentHash = string(nextHash[:])
-				transactions = append(transactions, &types.Transaction{
-					TransactionIdentifier: &types.TransactionIdentifier{
-						Hash: nextHash.String(),
-					},
-					Operations: squashOperations([]*types.Operation{
-						{
-							OperationIdentifier: &types.OperationIdentifier{
-								Index: 0,
-							},
-							Account: &types.AccountIdentifier{
-								Address: lib.Base58CheckEncode(pk[:], false, node.Params),
-							},
-							Amount: &types.Amount{
-								Value:    strconv.FormatUint(balance, 10),
-								Currency: &Currency,
-							},
-							Status: &SuccessStatus,
-							Type:   OutputOpType,
-						},
-					}),
-				})
-			}
-			for pk, balance := range lockedBalances {
-				if balance == 0 {
-					continue
-				}
-
-				nextHash := lib.Sha256DoubleHash([]byte(currentHash))
-				currentHash = string(nextHash[:])
-				transactions = append(transactions, &types.Transaction{
-					TransactionIdentifier: &types.TransactionIdentifier{
-						Hash: nextHash.String(),
-					},
-					Operations: squashOperations([]*types.Operation{
-						{
-							OperationIdentifier: &types.OperationIdentifier{
-								Index: 0,
-							},
-							Account: &types.AccountIdentifier{
-								Address: lib.Base58CheckEncode(pk[:], false, node.Params),
-								SubAccount: &types.SubAccountIdentifier{
-									Address: CreatorCoin,
-								},
-							},
-							Amount: &types.Amount{
-								Value:    strconv.FormatUint(balance, 10),
-								Currency: &Currency,
-							},
-							Status: &SuccessStatus,
-							Type:   OutputOpType,
-						},
-					}),
-				})
-			}
-
-			sort.Slice(transactions, func(ii, jj int) bool {
-				return bytes.Compare([]byte(transactions[ii].TransactionIdentifier.Hash),
-					[]byte(transactions[jj].TransactionIdentifier.Hash)) > 0
-			})
-
-			// We return a mega-fake-genesis block with the hypersync account balances bootstrapped via output operations.
-			return &types.Block{
-				BlockIdentifier:       blockIdentifier,
-				ParentBlockIdentifier: parentBlockIdentifier,
-				Timestamp:             int64(block.Header.TstampSecs) * 1000,
-				Transactions:          transactions,
-			}
+	currentHash := reverse(blockHash.String())
+	var transactions []*types.Transaction
+	for pk, balance := range balances {
+		if balance == 0 {
+			continue
 		}
+
+		// Here's the iterated hash SH <- sha256x2(SH).
+		nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+		currentHash = string(nextHash[:])
+		transactions = append(transactions, &types.Transaction{
+			TransactionIdentifier: &types.TransactionIdentifier{
+				Hash: nextHash.String(),
+			},
+			Operations: squashOperations([]*types.Operation{
+				{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: 0,
+					},
+					Account: &types.AccountIdentifier{
+						Address: lib.Base58CheckEncode(pk[:], false, node.Params),
+					},
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(balance, 10),
+						Currency: &Currency,
+					},
+					Status: &SuccessStatus,
+					Type:   OutputOpType,
+				},
+			}),
+		})
+	}
+	for pk, balance := range lockedBalances {
+		if balance == 0 {
+			continue
+		}
+
+		nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+		currentHash = string(nextHash[:])
+		transactions = append(transactions, &types.Transaction{
+			TransactionIdentifier: &types.TransactionIdentifier{
+				Hash: nextHash.String(),
+			},
+			Operations: squashOperations([]*types.Operation{
+				{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: 0,
+					},
+					Account: &types.AccountIdentifier{
+						Address: lib.Base58CheckEncode(pk[:], false, node.Params),
+						SubAccount: &types.SubAccountIdentifier{
+							Address: CreatorCoin,
+						},
+					},
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(balance, 10),
+						Currency: &Currency,
+					},
+					Status: &SuccessStatus,
+					Type:   OutputOpType,
+				},
+			}),
+		})
 	}
 
-	// If we get here, we know we either don't have a snapshot, or we're past the first
-	// snapshot height. This means we need to parse and return the transaction operations
-	// like usual.
-	return &types.Block{
-		BlockIdentifier:       blockIdentifier,
-		ParentBlockIdentifier: parentBlockIdentifier,
-		Timestamp:             int64(block.Header.TstampSecs) * 1000,
-		Transactions:          node.GetTransactionsForConvertBlock(block),
-	}
+	sort.Slice(transactions, func(ii, jj int) bool {
+		return bytes.Compare([]byte(transactions[ii].TransactionIdentifier.Hash),
+			[]byte(transactions[jj].TransactionIdentifier.Hash)) > 0
+	})
+	return transactions
 }
 
 type partialAccountIdentifier struct {
