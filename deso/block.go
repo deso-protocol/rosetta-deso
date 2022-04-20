@@ -41,7 +41,9 @@ func (node *Node) GetBlock(hash string) *types.Block {
 	} else {
 		parentBlockNode := blockchain.GetBlockNodeWithHash(blockNode.Header.PrevBlockHash)
 		parentBlockHash, err := parentBlockNode.Header.Hash()
-		glog.Error(errors.Wrapf(err, "GetBlock: Problem fetching parent block ndoe hash"))
+		if err != nil {
+			glog.Error(errors.Wrapf(err, "GetBlock: Problem fetching parent block ndoe hash"))
+		}
 		parentBlockIdentifier = &types.BlockIdentifier{
 			Index: int64(parentBlockNode.Header.Height),
 			Hash:  parentBlockHash.String(),
