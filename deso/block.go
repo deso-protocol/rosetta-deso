@@ -83,8 +83,16 @@ func (node *Node) GetBlock(hash string) *types.Block {
 
 func (node *Node) GetBlockAtHeight(height int64) *types.Block {
 	blockchain := node.GetBlockchain()
-	blockHash := blockchain.BestChain()[height].Hash
+	// We add +1 to the height, because blockNodes are indexed from height 0.
+	if int64(len(blockchain.BestChain())) < height+1 {
+		return nil
+	}
 
+	// Make sure the blockNode has the correct height.
+	if int64(blockchain.BestChain()[height].Header.Height) != height {
+		return nil
+	}
+	blockHash := blockchain.BestChain()[height].Hash
 	return node.GetBlock(blockHash.String())
 }
 

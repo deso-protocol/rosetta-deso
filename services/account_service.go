@@ -108,18 +108,31 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 
 func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, block *types.PartialBlockIdentifier) (*types.AccountBalanceResponse, *types.Error) {
 	var desoBlock *lib.MsgDeSoBlock
+	var blockHash *lib.BlockHash
+	var blockHeight uint64
 	if block.Hash != nil {
 		hashBytes, err := hex.DecodeString(*block.Hash)
 		if err != nil {
 			return nil, wrapErr(ErrDeSo, err)
 		}
-
-		blockHash := &lib.BlockHash{}
-		copy(blockHash[:], hashBytes[:])
-
-		desoBlock = node.GetBlockchain().GetBlock(blockHash)
+		blockHash = lib.NewBlockHash(hashBytes)
+		blockNode := node.GetBlockchain().GetBlockNodeWithHash(blockHash)
+		if blockNode == nil {
+			return nil, ErrBlockNotFound
+		}
+		blockHeight = blockNode.Header.Height
 	} else if block.Index != nil {
-		desoBlock = node.GetBlockchain().GetBlockAtHeight(uint32(*block.Index))
+		blockHeight = uint64(*block.Index)
+		// We add +1 to the height, because blockNodes are indexed from height 0.
+		if uint64(len(node.GetBlockchain().BestChain())) < blockHeight+1 {
+			return nil, ErrBlockNotFound
+		}
+
+		// Make sure the blockNode has the correct height.
+		if node.GetBlockchain().BestChain()[blockHeight].Header.Height != blockHeight {
+			return nil, ErrBlockNotFound
+		}
+		blockHash = node.GetBlockchain().BestChain()[blockHeight].Hash
 	} else {
 		return nil, ErrBlockNotFound
 	}
@@ -128,8 +141,6 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		return nil, ErrBlockNotFound
 	}
 
-	blockHash, _ := desoBlock.Hash()
-	blockHeight := desoBlock.Header.Height
 	publicKeyBytes, _, err := lib.Base58CheckDecode(account.Address)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidPublicKey, err)

@@ -147,7 +147,7 @@ type Node struct {
 	chainDB      *badger.DB
 	Params       *lib.DeSoParams
 	EventManager *lib.EventManager
-	Index        *Index
+	Index        *RosettaIndex
 	Online       bool
 	Config       *Config
 
@@ -291,6 +291,12 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.nodeMessageChan,
 	)
 	if err != nil {
+		if shouldRestart {
+			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+
+				"is true. Node will be erased and resynced. Error: (%v)", err)))
+			node.nodeMessageChan <- lib.NodeErase
+			return
+		}
 		panic(err)
 	}
 
