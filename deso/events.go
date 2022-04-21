@@ -82,9 +82,6 @@ func (node *Node) handleSnapshotCompleted() {
 
 						currentCounter += 1
 						if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
-							glog.Infof("Put (%v) balances with currentCounter (%v) at height (%v) with balancesPerBlock (%v) and "+
-								"totalCount (%v) and snapBlockHeight (%v)", len(balancesMap), currentCounter, currentBlockHeight,
-								balancesPerBlock, totalCount, snapshotBlockHeight)
 							node.Index.PutHypersyncBlockBalances(currentBlockHeight, false, balancesMap)
 							balancesMap = make(map[lib.PublicKey]uint64)
 							currentBlockHeight++
@@ -92,9 +89,6 @@ func (node *Node) handleSnapshotCompleted() {
 						}
 					}
 					if currentCounter > 0 {
-						glog.Infof("Put (%v) balances with currentCounter (%v) at height (%v) with balancesPerBlock (%v) and "+
-							"totalCount (%v) and snapBlockHeight (%v)", len(balancesMap), currentCounter, currentBlockHeight,
-							balancesPerBlock, totalCount, snapshotBlockHeight)
 						node.Index.PutHypersyncBlockBalances(currentBlockHeight, false, balancesMap)
 					}
 					return nil
