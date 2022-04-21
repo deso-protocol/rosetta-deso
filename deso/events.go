@@ -13,7 +13,6 @@ func (node *Node) handleSnapshotCompleted() {
 	node.Index.dbMutex.Lock()
 	defer node.Index.dbMutex.Unlock()
 
-	return
 	// We do some special logic if we have a snapshot.
 	snapshot := node.Server.GetBlockchain().Snapshot()
 	if snapshot != nil &&
