@@ -107,7 +107,6 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 }
 
 func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, block *types.PartialBlockIdentifier) (*types.AccountBalanceResponse, *types.Error) {
-	var desoBlock *lib.MsgDeSoBlock
 	var blockHash *lib.BlockHash
 	var blockHeight uint64
 	if block.Hash != nil {
@@ -134,10 +133,6 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		}
 		blockHash = node.GetBlockchain().BestChain()[blockHeight].Hash
 	} else {
-		return nil, ErrBlockNotFound
-	}
-
-	if desoBlock == nil {
 		return nil, ErrBlockNotFound
 	}
 
