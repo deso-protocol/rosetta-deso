@@ -235,6 +235,9 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 	// account's transactional history. Our alternative blockchain up to FirstSnapshotBlockHeight, will then
 	// basically consist of fake seed transactions. That is, transactions of type "credit PK with X balance." To make
 	// it somewhat efficient, we will evenly distribute all these fake seed transactions among blocks up to snapshot.
+	if blockHeight == 0 {
+		return []*types.Transaction{}
+	}
 
 	balances, lockedBalances := node.Index.GetHypersyncBlockBalances(blockHeight)
 
