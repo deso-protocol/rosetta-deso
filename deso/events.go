@@ -51,7 +51,7 @@ func (node *Node) handleSnapshotCompleted() {
 					}
 					currentBlockHeight := uint64(1)
 					// We'll force a ceiling on this because otherwise the last block could amass O(snapshotBlockHeight) balances
-					balancesPerBlock := 1 + totalCount/snapshotBlockHeight
+					balancesPerBlock := totalCount / snapshotBlockHeight
 					balancesMap := make(map[lib.PublicKey]uint64)
 					if totalCount < snapshotBlockHeight {
 						balancesPerBlock = 1
