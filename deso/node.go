@@ -270,6 +270,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.Config.DisableSlowSync,
 		node.Config.MaxSyncBlockHeight,
 		node.Config.ArchivalMode,
+		false,
 		rateLimitFeerateNanosPerKB,
 		MinFeeRateNanosPerKB,
 		stallTimeoutSeconds,
