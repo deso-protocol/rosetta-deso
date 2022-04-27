@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	coreCmd "github.com/deso-protocol/core/cmd"
 	"log"
 	"net/http"
 	"os"
@@ -64,22 +65,14 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
+	// Add all the core node flags
+	coreCmd.SetupRunFlags(runCmd)
+
 	runCmd.PersistentFlags().String("network", string(deso.Mainnet), "network to connect to")
 	runCmd.PersistentFlags().String("mode", string(deso.Online), "mode to start in")
 	runCmd.PersistentFlags().Int("port", 17005, "rosetta api listener port")
 	runCmd.PersistentFlags().Int("node-port", 17000, "node api listener port")
 	runCmd.PersistentFlags().String("data-directory", "/data", "location to store persistent data")
-	runCmd.PersistentFlags().StringSlice("miner-public-keys", []string{}, "a list of public keys for testnet mining")
-	runCmd.PersistentFlags().Bool("regtest", false, "don't connect to dorsey testnet, mine and spend blocks instantly")
-	runCmd.PersistentFlags().StringSlice("connect-ips", []string{}, "list of addresses to only connect to")
-
-	runCmd.PersistentFlags().String("log-dir", "", "The directory for logs")
-	runCmd.PersistentFlags().Uint64("glog-v", 0, "The log level. 0 = INFO, 1 = DEBUG, 2 = TRACE. Defaults to zero")
-	runCmd.PersistentFlags().String("glog-vmodule", "",
-		"The syntax of the argument is a comma-separated list of pattern=N, "+
-			"where pattern is a literal file name (minus the \".go\" suffix) or \"glob\" "+
-			"pattern and N is a V level. For instance, -vmodule=gopher*=3 sets the V "+
-			"level to 3 in all Go files whose names begin \"gopher\".")
 
 	runCmd.PersistentFlags().VisitAll(func(flag *pflag.Flag) {
 		viper.BindPFlag(flag.Name, flag)
