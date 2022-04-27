@@ -21,6 +21,15 @@ type Config struct {
 	MinerPublicKeys        []string
 	Regtest                bool
 	ConnectIPs             []string
+	HyperSync              bool
+	DisableSlowSync        bool
+	MaxSyncBlockHeight     uint32
+	ArchivalMode           bool
+
+	// Glog flags
+	LogDirectory string
+	GlogV        uint64
+	GlogVmodule  string
 }
 
 func LoadConfig() (*Config, error) {
@@ -58,6 +67,20 @@ func LoadConfig() (*Config, error) {
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
 	result.Regtest = viper.GetBool("regtest")
 	result.ConnectIPs = viper.GetStringSlice("connect-ips")
+
+	result.HyperSync = viper.GetBool("hypersync")
+
+	// Glog flags
+	result.LogDirectory = viper.GetString("log-dir")
+	if result.LogDirectory == "" {
+		result.LogDirectory = result.DataDirectory
+	}
+	result.GlogV = viper.GetUint64("glog-v")
+	result.GlogVmodule = viper.GetString("glog-vmodule")
+
+	result.DisableSlowSync = viper.GetBool("disable-slow-sync")
+	result.MaxSyncBlockHeight = viper.GetUint32("max-sync-block-height")
+	result.ArchivalMode = viper.GetBool("archival-mode")
 
 	return &result, nil
 }

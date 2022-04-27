@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	coreCmd "github.com/deso-protocol/core/cmd"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -36,8 +35,9 @@ to quickly create a Cobra application.`,
 			return err
 		}
 
+		shutdownListener := make(chan os.Signal)
 		node := deso.NewNode(config)
-		go node.Start()
+		go node.Start(&shutdownListener)
 
 		asserter, err := asserter.NewServer(
 			deso.OperationTypes,
@@ -55,13 +55,8 @@ to quickly create a Cobra application.`,
 		loggedRouter := server.LoggerMiddleware(router)
 		corsRouter := server.CorsMiddleware(loggedRouter)
 		log.Printf("Listening on port %d\n", config.Port)
-		go log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), corsRouter))
-
-		shutdownListener := make(chan os.Signal)
-		signal.Notify(shutdownListener, syscall.SIGINT, syscall.SIGTERM)
-		defer func() {
-			node.Stop()
-			glog.Info("Shutdown complete")
+		go func() {
+			glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), corsRouter))
 		}()
 
 		<-shutdownListener
@@ -70,14 +65,14 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
+	// Add all the core node flags
+	coreCmd.SetupRunFlags(runCmd)
+
 	runCmd.PersistentFlags().String("network", string(deso.Mainnet), "network to connect to")
 	runCmd.PersistentFlags().String("mode", string(deso.Online), "mode to start in")
 	runCmd.PersistentFlags().Int("port", 17005, "rosetta api listener port")
 	runCmd.PersistentFlags().Int("node-port", 17000, "node api listener port")
 	runCmd.PersistentFlags().String("data-directory", "/data", "location to store persistent data")
-	runCmd.PersistentFlags().StringSlice("miner-public-keys", []string{}, "a list of public keys for testnet mining")
-	runCmd.PersistentFlags().Bool("regtest", false, "don't connect to dorsey testnet, mine and spend blocks instantly")
-	runCmd.PersistentFlags().StringSlice("connect-ips", []string{}, "list of addresses to only connect to")
 
 	runCmd.PersistentFlags().VisitAll(func(flag *pflag.Flag) {
 		viper.BindPFlag(flag.Name, flag)

@@ -52,7 +52,7 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 	blockchain := node.GetBlockchain()
 	currentBlock := blockchain.BlockTip()
 
-	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil)
+	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil, node.Server.GetBlockchain().Snapshot())
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
@@ -107,24 +107,32 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 }
 
 func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, block *types.PartialBlockIdentifier) (*types.AccountBalanceResponse, *types.Error) {
-	var desoBlock *lib.MsgDeSoBlock
+	var blockHash *lib.BlockHash
+	var blockHeight uint64
 	if block.Hash != nil {
 		hashBytes, err := hex.DecodeString(*block.Hash)
 		if err != nil {
 			return nil, wrapErr(ErrDeSo, err)
 		}
-
-		blockHash := &lib.BlockHash{}
-		copy(blockHash[:], hashBytes[:])
-
-		desoBlock = node.GetBlockchain().GetBlock(blockHash)
+		blockHash = lib.NewBlockHash(hashBytes)
+		blockNode := node.GetBlockchain().GetBlockNodeWithHash(blockHash)
+		if blockNode == nil {
+			return nil, ErrBlockNotFound
+		}
+		blockHeight = blockNode.Header.Height
 	} else if block.Index != nil {
-		desoBlock = node.GetBlockchain().GetBlockAtHeight(uint32(*block.Index))
-	} else {
-		return nil, ErrBlockNotFound
-	}
+		blockHeight = uint64(*block.Index)
+		// We add +1 to the height, because blockNodes are indexed from height 0.
+		if uint64(len(node.GetBlockchain().BestChain())) < blockHeight+1 {
+			return nil, ErrBlockNotFound
+		}
 
-	if desoBlock == nil {
+		// Make sure the blockNode has the correct height.
+		if node.GetBlockchain().BestChain()[blockHeight].Header.Height != blockHeight {
+			return nil, ErrBlockNotFound
+		}
+		blockHash = node.GetBlockchain().BestChain()[blockHeight].Hash
+	} else {
 		return nil, ErrBlockNotFound
 	}
 
@@ -135,20 +143,17 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	publicKey := lib.NewPublicKey(publicKeyBytes)
 
 	var balance uint64
-
 	if account.SubAccount == nil {
-		balance = node.Index.GetBalanceSnapshot(false, publicKey, desoBlock.Header.Height)
+		balance = node.Index.GetBalanceSnapshot(false, publicKey, blockHeight)
 	} else if account.SubAccount.Address == deso.CreatorCoin {
-		balance = node.Index.GetBalanceSnapshot(true, publicKey, desoBlock.Header.Height)
+		balance = node.Index.GetBalanceSnapshot(true, publicKey, blockHeight)
 	}
-
-	blockHash, _ := desoBlock.Hash()
 
 	//fmt.Printf("height: %v, addr (cc): %v, bal: %v\n", desoBlock.Header.Height, lib.PkToStringTestnet(publicKeyBytes), balance)
 	return &types.AccountBalanceResponse{
 		BlockIdentifier: &types.BlockIdentifier{
 			Hash:  blockHash.String(),
-			Index: int64(desoBlock.Header.Height),
+			Index: int64(blockHeight),
 		},
 		Balances: []*types.Amount{
 			{
@@ -175,7 +180,7 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil)
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, s.node.Server.GetBlockchain().Snapshot())
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}

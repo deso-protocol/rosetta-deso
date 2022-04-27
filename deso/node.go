@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/btcsuite/btcd/addrmgr"
@@ -61,11 +65,11 @@ func getAddrsToListenOn(protocolPort int) ([]net.TCPAddr, []net.Listener) {
 func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.DeSoParams) {
 	ipAddrs, err := net.LookupIP(host)
 	if err != nil {
-		glog.V(2).Info("_addSeedAddrs: DNS discovery failed on seed host (continuing on): %s %v\n", host, err)
+		glog.V(2).Infof("_addSeedAddrs: DNS discovery failed on seed host (continuing on): %s %v\n", host, err)
 		return
 	}
 	if len(ipAddrs) == 0 {
-		glog.V(2).Info("_addSeedAddrs: No IPs found for host: %s\n", host)
+		glog.V(2).Infof("_addSeedAddrs: No IPs found for host: %s\n", host)
 		return
 	}
 
@@ -110,7 +114,7 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 				wg.Add(1)
 				go func(dnsGenerator []string) {
 					dnsString := fmt.Sprintf("%s%d%s", dnsGenerator[0], dnsNumber, dnsGenerator[1])
-					glog.V(2).Info("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
+					glog.V(2).Infof("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
 					addIPsForHost(desoAddrMgr, dnsString, params)
 					wg.Done()
 				}(dnsGeneratorOuter)
@@ -128,7 +132,7 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 				wg.Add(1)
 				go func(dnsGenerator []string) {
 					dnsString := fmt.Sprintf("%s%d%s", dnsGenerator[0], dnsNumber, dnsGenerator[1])
-					glog.V(2).Info("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
+					glog.V(2).Infof("_addSeedAddrsFromPrefixes: Querying DNS seed: %s", dnsString)
 					addIPsForHost(desoAddrMgr, dnsString, params)
 					wg.Done()
 				}(dnsGeneratorOuter)
@@ -140,11 +144,21 @@ func addSeedAddrsFromPrefixes(desoAddrMgr *addrmgr.AddrManager, params *lib.DeSo
 
 type Node struct {
 	*lib.Server
+	chainDB      *badger.DB
 	Params       *lib.DeSoParams
 	EventManager *lib.EventManager
-	Index        *Index
+	Index        *RosettaIndex
 	Online       bool
 	Config       *Config
+
+	// False when a NewNode is created, set to true on Start(), set to false
+	// after Stop() is called. Mainly used in testing.
+	isRunning    bool
+	runningMutex sync.Mutex
+
+	internalExitChan chan os.Signal
+	nodeMessageChan  chan lib.NodeMessage
+	stopWaitGroup    sync.WaitGroup
 }
 
 func NewNode(config *Config) *Node {
@@ -152,14 +166,29 @@ func NewNode(config *Config) *Node {
 	result.Config = config
 	result.Online = config.Mode == Online
 	result.Params = config.Params
+	result.internalExitChan = make(chan os.Signal)
+	result.nodeMessageChan = make(chan lib.NodeMessage)
 
 	return &result
 }
 
-func (node *Node) Start() {
+func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	// TODO: Replace glog with logrus so we can also get rid of flag library
 	flag.Set("alsologtostderr", "true")
+	flag.Set("log_dir", node.Config.LogDirectory)
+	flag.Set("v", fmt.Sprintf("%d", node.Config.GlogV))
+	flag.Set("vmodule", node.Config.GlogVmodule)
 	flag.Parse()
+	glog.CopyStandardLogTo("INFO")
+	node.runningMutex.Lock()
+	defer node.runningMutex.Unlock()
+
+	// Print config
+	glog.Infof("Start() | After node glog config")
+
+	node.internalExitChan = make(chan os.Signal)
+	node.nodeMessageChan = make(chan lib.NodeMessage)
+	go node.listenToRestart()
 
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
@@ -170,7 +199,7 @@ func (node *Node) Start() {
 
 	listeningAddrs, listeners := getAddrsToListenOn(node.Config.NodePort)
 
-	if node.Online {
+	if node.Online && len(node.Config.ConnectIPs) == 0 {
 		for _, addr := range listeningAddrs {
 			netAddr := wire.NewNetAddress(&addr, 0)
 			_ = desoAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
@@ -183,11 +212,11 @@ func (node *Node) Start() {
 		go addSeedAddrsFromPrefixes(desoAddrMgr, node.Config.Params)
 	}
 
+	var err error
 	dbDir := lib.GetBadgerDbPath(node.Config.DataDirectory)
-	opts := badger.DefaultOptions(dbDir)
+	opts := lib.PerformanceBadgerOptions(dbDir)
 	opts.ValueDir = dbDir
-	opts.MemTableSize = 1024 << 20
-	db, err := badger.Open(opts)
+	node.chainDB, err = badger.Open(opts)
 	if err != nil {
 		panic(err)
 	}
@@ -201,9 +230,8 @@ func (node *Node) Start() {
 
 	// Setup rosetta index
 	rosettaIndexDir := filepath.Join(node.Config.DataDirectory, "index")
-	rosettaIndexOpts := badger.DefaultOptions(rosettaIndexDir)
+	rosettaIndexOpts := lib.PerformanceBadgerOptions(rosettaIndexDir)
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
-	rosettaIndexOpts.MemTableSize = 1024 << 20
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
 	node.Index = NewIndex(rosettaIndex)
 
@@ -211,6 +239,7 @@ func (node *Node) Start() {
 	node.EventManager = lib.NewEventManager()
 	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
 	node.EventManager.OnBlockConnected(node.handleBlockConnected)
+	node.EventManager.OnSnapshotCompleted(node.handleSnapshotCompleted)
 
 	minerCount := uint64(1)
 	maxBlockTemplatesToCache := uint64(100)
@@ -224,18 +253,24 @@ func (node *Node) Start() {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
-	node.Server, err = lib.NewServer(
+	shouldRestart := false
+	node.Server, err, shouldRestart = lib.NewServer(
 		node.Config.Params,
 		listeners,
 		desoAddrMgr,
 		connectIPs,
-		db,
+		node.chainDB,
 		nil,
 		targetOutboundPeers,
 		maxInboundPeers,
 		node.Config.MinerPublicKeys,
 		minerCount,
 		true,
+		node.Config.HyperSync,
+		node.Config.DisableSlowSync,
+		node.Config.MaxSyncBlockHeight,
+		node.Config.ArchivalMode,
+		false,
 		rateLimitFeerateNanosPerKB,
 		MinFeeRateNanosPerKB,
 		stallTimeoutSeconds,
@@ -243,6 +278,7 @@ func (node *Node) Start() {
 		minBlockUpdateInterval,
 		blockCypherAPIKey,
 		true,
+		lib.SnapshotBlockHeightPeriod,
 		node.Config.DataDirectory,
 		mempoolDumpDir,
 		disableNetworking,
@@ -253,10 +289,127 @@ func (node *Node) Start() {
 		[]string{},
 		0,
 		node.EventManager,
+		node.nodeMessageChan,
 	)
 	if err != nil {
+		if shouldRestart {
+			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+
+				"is true. Node will be erased and resynced. Error: (%v)", err)))
+			node.nodeMessageChan <- lib.NodeErase
+			return
+		}
 		panic(err)
 	}
 
-	node.Server.Start()
+	if !shouldRestart {
+		node.Server.Start()
+	}
+	node.isRunning = true
+
+	if shouldRestart {
+		if node.nodeMessageChan != nil {
+			node.nodeMessageChan <- lib.NodeRestart
+		}
+	}
+
+	syscallChannel := make(chan os.Signal)
+	signal.Notify(syscallChannel, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		select {
+		case _, open := <-node.internalExitChan:
+			if !open {
+				return
+			}
+		case <-syscallChannel:
+		}
+
+		node.Stop()
+		for _, channel := range exitChannels {
+			if *channel != nil {
+				close(*channel)
+				*channel = nil
+			}
+		}
+		glog.Info(lib.CLog(lib.Yellow, "Core node shutdown complete"))
+	}()
+}
+
+func (node *Node) Stop() {
+	node.runningMutex.Lock()
+	defer node.runningMutex.Unlock()
+
+	if !node.isRunning {
+		return
+	}
+	node.isRunning = false
+	glog.Infof(lib.CLog(lib.Yellow, "Node is shutting down. This might take a minute. Please don't "+
+		"close the node now or else you might corrupt the state."))
+
+	// Server
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Stopping server..."))
+	node.Server.Stop()
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Server successfully stopped."))
+
+	// Snapshot
+	snap := node.Server.GetBlockchain().Snapshot()
+	if snap != nil {
+		glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Stopping snapshot..."))
+		snap.Stop()
+		node.closeDb(snap.SnapshotDb, "snapshot")
+		glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Snapshot successfully stopped."))
+	}
+
+	// Databases
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Closing all databases..."))
+	node.closeDb(node.chainDB, "chain")
+	node.closeDb(node.Index.db, "rosetta")
+	node.stopWaitGroup.Wait()
+	glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Databases successfully closed."))
+
+	if node.internalExitChan != nil {
+		close(node.internalExitChan)
+		node.internalExitChan = nil
+	}
+}
+
+// Close a database and handle the stopWaitGroup accordingly.
+func (node *Node) closeDb(db *badger.DB, dbName string) {
+	node.stopWaitGroup.Add(1)
+
+	glog.Infof("Node.closeDb: Preparing to close %v db", dbName)
+	go func() {
+		defer node.stopWaitGroup.Done()
+		if err := db.Close(); err != nil {
+			glog.Fatalf(lib.CLog(lib.Red, fmt.Sprintf("Node.Stop: Problem closing %v db: err: (%v)", dbName, err)))
+		} else {
+			glog.Infof(lib.CLog(lib.Yellow, fmt.Sprintf("Node.closeDb: Closed %v Db", dbName)))
+		}
+	}()
+}
+
+func (node *Node) listenToRestart(exitChannels ...*chan os.Signal) {
+	select {
+	case <-node.internalExitChan:
+		break
+	case operation := <-node.nodeMessageChan:
+		if !node.isRunning {
+			panic("Node.listenToRestart: Node is currently not running, nodeMessageChan should've not been called!")
+		}
+		glog.Infof("Node.listenToRestart: Stopping node")
+		node.Stop()
+		glog.Infof("Node.listenToRestart: Finished stopping node")
+		switch operation {
+		case lib.NodeErase:
+			if err := os.RemoveAll(node.Config.DataDirectory); err != nil {
+				glog.Fatal(lib.CLog(lib.Red, fmt.Sprintf("IMPORTANT: Problem removing the directory (%v), you "+
+					"should run `rm -rf %v` to delete it manually. Error: (%v)", node.Config.DataDirectory,
+					node.Config.DataDirectory, err)))
+				return
+			}
+		}
+
+		glog.Infof("Node.listenToRestart: Restarting node")
+		go node.Start(exitChannels...)
+		break
+	}
 }
