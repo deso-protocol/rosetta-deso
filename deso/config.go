@@ -2,6 +2,9 @@ package deso
 
 import (
 	"errors"
+	"github.com/golang/glog"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -61,7 +64,11 @@ func LoadConfig() (*Config, error) {
 		Hash: result.Params.GenesisBlockHashHex,
 	}
 
-	result.DataDirectory = viper.GetString("data-directory")
+	dataDir := viper.GetString("data-directory")
+	result.DataDirectory = filepath.Join(dataDir, lib.DBVersionString)
+	if err := os.MkdirAll(result.DataDirectory, os.ModePerm); err != nil {
+		glog.Fatalf("Could not create data directories (%s): %v", result.DataDirectory, err)
+	}
 	result.Port = viper.GetInt("port")
 	result.NodePort = viper.GetInt("node-port")
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
