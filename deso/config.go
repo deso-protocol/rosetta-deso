@@ -25,9 +25,8 @@ type Config struct {
 	Regtest                bool
 	ConnectIPs             []string
 	HyperSync              bool
-	DisableSlowSync        bool
+	SyncType               lib.NodeSyncType
 	MaxSyncBlockHeight     uint32
-	ArchivalMode           bool
 
 	// Glog flags
 	LogDirectory string
@@ -85,9 +84,8 @@ func LoadConfig() (*Config, error) {
 	result.GlogV = viper.GetUint64("glog-v")
 	result.GlogVmodule = viper.GetString("glog-vmodule")
 
-	result.DisableSlowSync = viper.GetBool("disable-slow-sync")
+	result.SyncType = lib.NodeSyncType(viper.GetString("sync-type"))
 	result.MaxSyncBlockHeight = viper.GetUint32("max-sync-block-height")
-	result.ArchivalMode = viper.GetBool("archival-mode")
 
 	return &result, nil
 }
