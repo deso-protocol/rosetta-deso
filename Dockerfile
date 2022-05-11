@@ -32,3 +32,5 @@ RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.
 FROM alpine:edge
 
 COPY --from=rosetta /deso/src/rosetta-deso/bin/rosetta-deso /deso/bin/rosetta-deso
+
+CMD ["/deso/bin/rosetta-deso", "run", "--data-directory", "/pd/rosetta-2022-01-22"]
