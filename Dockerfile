@@ -33,4 +33,4 @@ FROM alpine:edge
 
 COPY --from=rosetta /deso/src/rosetta-deso/bin/rosetta-deso /deso/bin/rosetta-deso
 
-CMD ["/deso/bin/rosetta-deso", "run", "--data-directory", "/pd/rosetta-2022-01-22"]
+ENTRYPOINT ["/deso/bin/rosetta-deso", "run", "--data-directory", "/pd/rosetta-2022-01-22"]
