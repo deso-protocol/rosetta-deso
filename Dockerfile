@@ -25,8 +25,8 @@ COPY core/cmd       ../core/cmd
 COPY core/lib       ../core/lib
 COPY core/migrate   ../core/migrate
 
-## build rosetta-deso
-#RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
+# build rosetta-deso
+RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
 #
 ## create tiny image
 #FROM alpine:edge
