@@ -25,12 +25,12 @@ COPY core/cmd       ../core/cmd
 COPY core/lib       ../core/lib
 COPY core/migrate   ../core/migrate
 
-# build rosetta-deso
-RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
-
-# create tiny image
-FROM alpine:edge
-
-COPY --from=rosetta /deso/src/rosetta-deso/bin/rosetta-deso /deso/bin/rosetta-deso
-
-ENTRYPOINT ["/deso/bin/rosetta-deso", "run", "--data-directory", "/pd/rosetta-2022-01-22"]
+## build rosetta-deso
+#RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
+#
+## create tiny image
+#FROM alpine:edge
+#
+#COPY --from=rosetta /deso/src/rosetta-deso/bin/rosetta-deso /deso/bin/rosetta-deso
+#
+#ENTRYPOINT ["/deso/bin/rosetta-deso", "run", "--data-directory", "/pd/rosetta-2022-01-22"]
