@@ -59,16 +59,20 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 			// Add the account identifier to our map
 			inputPubKeysFoundMap[op.Account.Address] = true
 
-			txId, txnIndex, err := ParseCoinIdentifier(op.CoinChange.CoinIdentifier)
-			if err != nil {
-				return nil, wrapErr(ErrInvalidCoin, err)
-			}
+			if request.Metadata != nil {
+				if useLegacyUtxos, exists := request.Metadata["legacy_utxo_selection"]; exists && useLegacyUtxos.(bool) {
+					txId, txnIndex, err := ParseCoinIdentifier(op.CoinChange.CoinIdentifier)
+					if err != nil {
+						return nil, wrapErr(ErrInvalidCoin, err)
+					}
 
-			// Include the inputs in case we use legacy utxo selection
-			optionsObj.DeSoInputs = append(optionsObj.DeSoInputs, &desoInput{
-				TxHex: hex.EncodeToString(txId.ToBytes()),
-				Index: txnIndex,
-			})
+					// Include the inputs in case we use legacy utxo selection
+					optionsObj.DeSoInputs = append(optionsObj.DeSoInputs, &desoInput{
+						TxHex: hex.EncodeToString(txId.ToBytes()),
+						Index: txnIndex,
+					})
+				}
+			}
 		} else if op.Type == deso.OutputOpType {
 			// Parse the amount of this output
 			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
