@@ -25,6 +25,7 @@ type Config struct {
 	Regtest                bool
 	ConnectIPs             []string
 	HyperSync              bool
+	ForceCheksum           bool
 	SyncType               lib.NodeSyncType
 	MaxSyncBlockHeight     uint32
 
@@ -75,6 +76,7 @@ func LoadConfig() (*Config, error) {
 	result.ConnectIPs = viper.GetStringSlice("connect-ips")
 
 	result.HyperSync = viper.GetBool("hypersync")
+	result.ForceCheksum = viper.GetBool("force-checksum")
 
 	// Glog flags
 	result.LogDirectory = viper.GetString("log-dir")

@@ -3,9 +3,8 @@
   --mode ONLINE \
   --port=17006 \
   --node-port=18001 \
-  --data-directory /tmp/rosetta-testnet-online-xadldldlx00000 \
+  --data-directory /tmp/rosetta-testnet-online-xadldldlxlsdk00002 \
   --hypersync=true \
-  --disable-slow-sync=false \
-  --network TESTNET \
-  --connect-ips=localhost:18000 \
+  --sync-type=hypersync \
+  --network TESTNET
 )

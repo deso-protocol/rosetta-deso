@@ -57,42 +57,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
-	node.Server, err, _ = lib.NewServer(
-		node.Config.Params,
-		nil,
-		nil,
-		[]string{},
-		node.chainDB,
-		nil,
-		targetOutboundPeers,
-		maxInboundPeers,
-		[]string{},
-		minerCount,
-		true,
-		false,
-		false,
-		0,
-		false,
-		rateLimitFeerateNanosPerKB,
-		1000,
-		stallTimeoutSeconds,
-		maxBlockTemplatesToCache,
-		minBlockUpdateInterval,
-		blockCypherAPIKey,
-		true,
-		0,
-		node.Config.DataDirectory,
-		mempoolDumpDir,
-		disableNetworking,
-		readOnly,
-		false,
-		nil,
-		"",
-		[]string{},
-		0,
-		node.EventManager,
-		nil,
-	)
+	node.Server, err, _ = lib.NewServer(node.Config.Params, nil, nil, []string{}, node.chainDB, nil, targetOutboundPeers, maxInboundPeers, []string{}, minerCount, true, false, false, 0, false, rateLimitFeerateNanosPerKB, 1000, stallTimeoutSeconds, maxBlockTemplatesToCache, minBlockUpdateInterval, blockCypherAPIKey, true, 0, node.Config.DataDirectory, mempoolDumpDir, disableNetworking, readOnly, false, nil, "", []string{}, 0, node.EventManager, nil, true)
 	require.NoError(err)
 
 	blockchain := node.GetBlockchain()
