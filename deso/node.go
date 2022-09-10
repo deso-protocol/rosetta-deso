@@ -3,6 +3,8 @@ package deso
 import (
 	"flag"
 	"fmt"
+	"github.com/deso-protocol/go-deadlock"
+	"github.com/dgraph-io/badger/v3"
 	"math/rand"
 	"net"
 	"os"
@@ -16,8 +18,6 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/deso-protocol/core/lib"
-	"github.com/deso-protocol/go-deadlock"
-	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/glog"
 )
 
@@ -289,6 +289,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		0,
 		node.EventManager,
 		node.nodeMessageChan,
+		node.Config.ForceChecksum,
 	)
 	if err != nil {
 		if shouldRestart {
