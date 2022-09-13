@@ -27,6 +27,7 @@ type Config struct {
 	HyperSync              bool
 	SyncType               lib.NodeSyncType
 	MaxSyncBlockHeight     uint32
+	ForceChecksum          bool
 
 	// Glog flags
 	LogDirectory string
@@ -86,6 +87,6 @@ func LoadConfig() (*Config, error) {
 
 	result.SyncType = lib.NodeSyncType(viper.GetString("sync-type"))
 	result.MaxSyncBlockHeight = viper.GetUint32("max-sync-block-height")
-
+	result.ForceChecksum = viper.GetBool("force-checksum")
 	return &result, nil
 }

@@ -278,10 +278,10 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 
 	// signature is in form of R || S
 	signatureBytes := request.Signatures[0].Bytes
-	desoTxn.Signature = &btcec.Signature{
+	desoTxn.Signature.SetSignature(&btcec.Signature{
 		R: new(big.Int).SetBytes(signatureBytes[:32]),
 		S: new(big.Int).SetBytes(signatureBytes[32:64]),
-	}
+	})
 
 	signedTxnBytes, err := desoTxn.ToBytes(false)
 	if err != nil {
