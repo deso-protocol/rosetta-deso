@@ -194,6 +194,10 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 		if len(utxoOpsForBlock) > 0 {
 			utxoOpsForTxn := utxoOpsForBlock[txnIndexInBlock]
 
+			// Get balance model spends
+			balanceModelSpends := node.getBalanceModelSpends(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, balanceModelSpends...)
+
 			// Add implicit outputs from UtxoOps
 			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, implicitOutputs...)
@@ -763,6 +767,29 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.
 	return operations
 }
 
+func (node *Node) getBalanceModelSpends(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	var operations []*types.Operation
+
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeSpendBalance {
+			operations = append(operations, &types.Operation{
+				Account: &types.AccountIdentifier{
+					Address: lib.Base58CheckEncode(utxoOp.BalancePublicKey, false, node.Params),
+				},
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(utxoOp.BalanceAmountNanos, 10),
+					Currency: &Currency,
+				},
+
+				Status: &SuccessStatus,
+				Type:   InputOpType,
+			})
+			numOps++
+		}
+	}
+	return operations
+}
+
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
@@ -790,7 +817,22 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 				Type:   OutputOpType,
 			})
 
-			numOps += 1
+			numOps++
+		}
+		if utxoOp.Type == lib.OperationTypeAddBalance {
+			operations = append(operations, &types.Operation{
+				Account: &types.AccountIdentifier{
+					Address: lib.Base58CheckEncode(utxoOp.BalancePublicKey, false, node.Params),
+				},
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(utxoOp.BalanceAmountNanos, 10),
+					Currency: &Currency,
+				},
+
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			})
+			numOps++
 		}
 	}
 
