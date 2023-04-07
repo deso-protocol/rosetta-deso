@@ -1,11 +1,11 @@
 # Syncs from online.sh
 (cd ../../ && go build -o rosetta-deso -gcflags="all=-N -l" main.go && ./rosetta-deso run \
   --mode ONLINE \
-  --port=17006 \
+  --port=17005 \
   --node-port=18001 \
-  --data-directory /tmp/rosetta-testnet-online-xadldldlx00000 \
+  --data-directory /tmp/rosetta-testnet-online-20230407-00002 \
   --hypersync=true \
-  --disable-slow-sync=false \
+  --sync-type=hypersync \
+  --force-checksum=false \
   --network TESTNET \
-  --connect-ips=localhost:18000 \
 )
