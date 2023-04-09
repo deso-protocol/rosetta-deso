@@ -3,7 +3,7 @@
   --mode ONLINE \
   --port=17005 \
   --node-port=18001 \
-  --data-directory /tmp/rosetta-testnet-online-20230407-00002 \
+  --data-directory /tmp/rosetta-testnet-online-20230407-00009 \
   --hypersync=true \
   --sync-type=hypersync \
   --force-checksum=false \

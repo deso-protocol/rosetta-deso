@@ -183,7 +183,6 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	node.runningMutex.Lock()
 	defer node.runningMutex.Unlock()
 
-	lib.GlobalDeSoParams = *node.Params
 	// Print config
 	glog.Infof("Start() | After node glog config")
 
@@ -194,6 +193,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	if node.Config.Regtest {
 		node.Params.EnableRegtest()
 	}
+	lib.GlobalDeSoParams = *node.Params
 
 	desoAddrMgr := addrmgr.New(node.Config.DataDirectory, net.LookupIP)
 	desoAddrMgr.Start()
