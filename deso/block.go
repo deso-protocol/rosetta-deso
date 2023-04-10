@@ -168,31 +168,46 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 			ops = append(ops, op)
 		}
 
-		for _, output := range txn.TxOutputs {
-			op := &types.Operation{
-				OperationIdentifier: &types.OperationIdentifier{
-					Index: int64(len(ops)),
-				},
+		// DeSo started with a UTXO model but switched to a balance model at a particular block
+		// height. We need to handle both cases here.
+		isBalanceModelTxn := false
+		if block.Header.Height >= uint64(node.Params.ForkHeights.BalanceModelBlockHeight) {
+			isBalanceModelTxn = true
+		}
 
-				Account: &types.AccountIdentifier{
-					Address: lib.Base58CheckEncode(output.PublicKey, false, node.Params),
-				},
+		// If we are dealing with a legacy UTXO transaction, then we need to add the outputs from
+		// the transaction directly rather than relying on the UtxoOps.
+		if !isBalanceModelTxn {
+			for _, output := range txn.TxOutputs {
+				op := &types.Operation{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: int64(len(ops)),
+					},
 
-				Amount: &types.Amount{
-					Value:    strconv.FormatUint(output.AmountNanos, 10),
-					Currency: &Currency,
-				},
+					Account: &types.AccountIdentifier{
+						Address: lib.Base58CheckEncode(output.PublicKey, false, node.Params),
+					},
 
-				Status: &SuccessStatus,
-				Type:   OutputOpType,
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(output.AmountNanos, 10),
+						Currency: &Currency,
+					},
+
+					Status: &SuccessStatus,
+					Type:   OutputOpType,
+				}
+
+				ops = append(ops, op)
 			}
-
-			ops = append(ops, op)
 		}
 
 		// Add all the special ops for specific txn types.
 		if len(utxoOpsForBlock) > 0 {
 			utxoOpsForTxn := utxoOpsForBlock[txnIndexInBlock]
+
+			// Get balance model spends
+			balanceModelSpends := node.getBalanceModelSpends(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, balanceModelSpends...)
 
 			// Add implicit outputs from UtxoOps
 			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(ops))
@@ -763,6 +778,34 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.
 	return operations
 }
 
+func (node *Node) getBalanceModelSpends(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	var operations []*types.Operation
+
+	for _, utxoOp := range utxoOpsForTxn {
+		if utxoOp.Type == lib.OperationTypeSpendBalance {
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(numOps),
+				},
+				Account: &types.AccountIdentifier{
+					Address: lib.Base58CheckEncode(utxoOp.BalancePublicKey, false, node.Params),
+				},
+				Amount: &types.Amount{
+					// We need to negate this value because it's an input, which means it's subtracting from
+					// the account's balance.
+					Value:    strconv.FormatInt(int64(utxoOp.BalanceAmountNanos)*-1, 10),
+					Currency: &Currency,
+				},
+
+				Status: &SuccessStatus,
+				Type:   InputOpType,
+			})
+			numOps++
+		}
+	}
+	return operations
+}
+
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
@@ -790,7 +833,25 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 				Type:   OutputOpType,
 			})
 
-			numOps += 1
+			numOps++
+		}
+		if utxoOp.Type == lib.OperationTypeAddBalance {
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(numOps),
+				},
+				Account: &types.AccountIdentifier{
+					Address: lib.Base58CheckEncode(utxoOp.BalancePublicKey, false, node.Params),
+				},
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(utxoOp.BalanceAmountNanos, 10),
+					Currency: &Currency,
+				},
+
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			})
+			numOps++
 		}
 	}
 

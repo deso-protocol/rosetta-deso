@@ -45,10 +45,11 @@ transfer(10){
         }
     };
 
-    // Send between dust_amount and 10 DESO
+    // Send between dust_amount and 0.1 DESO
+    // Lowering the amount makes it easier to test on regtest
     recipient_amount = random_number({
       "minimum": {{dust_amount}},
-      "maximum": "10000000000"
+      "maximum": "100000000"
     });
     print_message({
       "recipient_amount":{{recipient_amount}}
