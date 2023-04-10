@@ -241,7 +241,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	// have been affected by a SwapIdentity. If we don't do this we'll
 	// miss swaps that involve a public key with a missing profile.
 	lockedBalances := make(map[lib.PublicKey]uint64, len(event.UtxoView.PublicKeyToPKIDEntry))
-	for pubKey, _ := range event.UtxoView.PublicKeyToPKIDEntry {
+	for pubKey := range event.UtxoView.PublicKeyToPKIDEntry {
 		balanceToSet := uint64(0)
 		profileFound := event.UtxoView.GetProfileEntryForPublicKey(pubKey[:])
 		if profileFound != nil && !profileFound.IsDeleted() {
