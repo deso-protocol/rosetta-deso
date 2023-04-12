@@ -16,16 +16,30 @@ type preprocessOptions struct {
 	// Values used to set TxnNonce. Note that only one of
 	// NonceExpirationBlockHeight and NonceExpirationBlockHeightOffset
 	// should be specified. If both are specified,
+
 	// NonceExpirationBlockHeightOffset is used.
-	NoncePartialID                   uint64 `json:"nonce_partial_id"`
-	NonceExpirationBlockHeight       uint64 `json:"nonce_expiration_block_height"`
+	// NoncePartialID allows for specifying the partial ID used in the transaction's nonce.
+	NoncePartialID uint64 `json:"nonce_partial_id"`
+	// NonceExpirationBlockHeight allows for specifying the expiration block height used in
+	// the transaction's nonce. Must be greater than the current block height and less than
+	// the current block height plus the current network
+	NonceExpirationBlockHeight uint64 `json:"nonce_expiration_block_height"`
+	// NonceExpirationBlockHeightOffset allows for specifying the offset used to compute the
+	// expiration block height in the transaction's nonce. This takes priority over
+	// nonce_expiration_block_height. The expiration block height of the nonce will be set to
+	// the current block height plus this value. Must be less than the current network
+	// MaxNonceExpirationBlockHeightOffset value.
 	NonceExpirationBlockHeightOffset uint64 `json:"nonce_expiration_block_height_offset"`
 
 	// Values used to specify the fee for a transaction. Note that
 	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
-	// If both are specified, FeeRateNanosPerKB is used.
+
+	// FeeRateNanosPerKB allows for specifying a fee rate that differs from the network minimum.
+	// Must be greater than the network minimum.
 	FeeRateNanosPerKB uint64 `json:"fee_rate_nanos_per_kb"`
-	TxnFeeNanos       uint64 `json:"txn_fee_nanos"`
+	// TxnFeeNanos allows for explicitly specify the fee nanos field on a transaction.
+	// Must be greater than the fee nanos values computed when constructing the transaction.
+	TxnFeeNanos uint64 `json:"txn_fee_nanos"`
 }
 
 type desoOutput struct {
