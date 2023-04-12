@@ -91,9 +91,9 @@ var (
 		Message: "Fee specified is too low",
 	}
 
-	ErrNonceExpirationBlockBufferTooLarge = &types.Error{
+	ErrNonceExpirationBlockHeightOffsetTooLarge = &types.Error{
 		Code:    14,
-		Message: "Nonce expiration block buffer is too large",
+		Message: "Nonce expiration block height offset is too large",
 	}
 
 	ErrNonceExpirationBlockHeightTooLow = &types.Error{

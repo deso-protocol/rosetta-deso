@@ -14,12 +14,12 @@ type preprocessOptions struct {
 	DeSoInputs          []*desoInput `json:"deso_inputs"`           // Deprecated
 
 	// Values used to set TxnNonce. Note that only one of
-	// NonceExpirationBlockHeight and NonceExpirationBlockBuffer
+	// NonceExpirationBlockHeight and NonceExpirationBlockHeightOffset
 	// should be specified. If both are specified,
-	// NonceExpirationBlockBuffer is used.
-	NoncePartialID             uint64 `json:"nonce_partial_id"`
-	NonceExpirationBlockHeight uint64 `json:"nonce_expiration_block_height"`
-	NonceExpirationBlockBuffer uint64 `json:"nonce_expiration_block_buffer"`
+	// NonceExpirationBlockHeightOffset is used.
+	NoncePartialID                   uint64 `json:"nonce_partial_id"`
+	NonceExpirationBlockHeight       uint64 `json:"nonce_expiration_block_height"`
+	NonceExpirationBlockHeightOffset uint64 `json:"nonce_expiration_block_height_offset"`
 
 	// Values used to specify the fee for a transaction. Note that
 	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
@@ -52,12 +52,12 @@ type constructionMetadata struct {
 	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
 
 	// Values used to set TxnNonce. Note that only one of
-	// NonceExpirationBlockHeight and NonceExpirationBlockBuffer
+	// NonceExpirationBlockHeight and NonceExpirationBlockHeightOffset
 	// should be specified. If both are specified,
-	// NonceExpirationBlockBuffer is used.
-	NoncePartialID             uint64 `json:"nonce_partial_id"`
-	NonceExpirationBlockHeight uint64 `json:"nonce_expiration_block_height"`
-	NonceExpirationBlockBuffer uint64 `json:"nonce_expiration_block_buffer"`
+	// NonceExpirationBlockHeightOffset is used.
+	NoncePartialID                   uint64 `json:"nonce_partial_id"`
+	NonceExpirationBlockHeight       uint64 `json:"nonce_expiration_block_height"`
+	NonceExpirationBlockHeightOffset uint64 `json:"nonce_expiration_block_height_offset"`
 
 	// Values used to specify the fee for a transaction. Note that
 	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
@@ -74,12 +74,12 @@ type transactionMetadata struct {
 	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
 
 	// Values used to set TxnNonce. Note that only one of
-	// NonceExpirationBlockHeight and NonceExpirationBlockBuffer
+	// NonceExpirationBlockHeight and NonceExpirationBlockHeightOffset
 	// should be specified. If both are specified,
-	// NonceExpirationBlockBuffer is used.
-	NoncePartialID             uint64 `json:"nonce_partial_id"`
-	NonceExpirationBlockHeight uint64 `json:"nonce_expiration_block_height"`
-	NonceExpirationBlockBuffer uint64 `json:"nonce_expiration_block_buffer"`
+	// NonceExpirationBlockHeightOffset is used.
+	NoncePartialID                   uint64 `json:"nonce_partial_id"`
+	NonceExpirationBlockHeight       uint64 `json:"nonce_expiration_block_height"`
+	NonceExpirationBlockHeightOffset uint64 `json:"nonce_expiration_block_height_offset"`
 
 	// Values used to specify the fee for a transaction. Note that
 	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
