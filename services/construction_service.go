@@ -102,23 +102,23 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 
 	var err error
 	// Parse nonce and fee fields from the metadata
-	optionsObj.NoncePartialID, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_partial_id"))
+	optionsObj.NoncePartialID, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_partial_id")
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	optionsObj.NonceExpirationBlockHeight, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height"))
+	optionsObj.NonceExpirationBlockHeight, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height")
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	optionsObj.NonceExpirationBlockHeightOffset, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height_offset"))
+	optionsObj.NonceExpirationBlockHeightOffset, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height_offset")
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	optionsObj.FeeRateNanosPerKB, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "fee_rate_nanos_per_kb"))
+	optionsObj.FeeRateNanosPerKB, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "fee_rate_nanos_per_kb")
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	optionsObj.TxnFeeNanos, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "txn_fee_nanos"))
+	optionsObj.TxnFeeNanos, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "txn_fee_nanos")
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
