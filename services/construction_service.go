@@ -99,20 +99,36 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 		break
 	}
 
+	var err error
 	if noncePartialID, exists := request.Metadata["nonce_partial_id"]; exists {
-		optionsObj.NoncePartialID = noncePartialID.(uint64)
+		optionsObj.NoncePartialID, err = strconv.ParseUint(noncePartialID.(string), 10, 64)
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
 	}
 	if nonceExpirationBlockHeight, exists := request.Metadata["nonce_expiration_block_height"]; exists {
-		optionsObj.NonceExpirationBlockHeight = nonceExpirationBlockHeight.(uint64)
+		optionsObj.NonceExpirationBlockHeight, err = strconv.ParseUint(nonceExpirationBlockHeight.(string), 10, 64)
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
 	}
 	if nonceExpirationBlockBuffer, exists := request.Metadata["nonce_expiration_block_buffer"]; exists {
-		optionsObj.NonceExpirationBlockBuffer = nonceExpirationBlockBuffer.(uint64)
+		optionsObj.NonceExpirationBlockBuffer, err = strconv.ParseUint(nonceExpirationBlockBuffer.(string), 10, 64)
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
 	}
 	if feeRateNanosPerKB, exists := request.Metadata["fee_rate_nanos_per_kb"]; exists {
-		optionsObj.FeeRateNanosPerKB = feeRateNanosPerKB.(uint64)
+		optionsObj.FeeRateNanosPerKB, err = strconv.ParseUint(feeRateNanosPerKB.(string), 10, 64)
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
 	}
 	if txnFeeNanos, exists := request.Metadata["txn_fee_nanos"]; exists {
-		optionsObj.TxnFeeNanos = txnFeeNanos.(uint64)
+		optionsObj.TxnFeeNanos, err = strconv.ParseUint(txnFeeNanos.(string), 10, 64)
+		if err != nil {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+		}
 	}
 
 	options, err := types.MarshalMap(optionsObj)
