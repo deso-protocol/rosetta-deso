@@ -239,6 +239,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 			return nil, ErrFeeTooLow
 		}
 		txn.TxnFeeNanos = options.TxnFeeNanos
+		fee = options.TxnFeeNanos
 	}
 
 	desoTxnBytes, err := txn.ToBytes(true)
