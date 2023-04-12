@@ -12,6 +12,20 @@ type preprocessOptions struct {
 	// Allow legacy manual selection of UTXOs
 	LegacyUTXOSelection bool         `json:"legacy_utxo_selection"` // Deprecated
 	DeSoInputs          []*desoInput `json:"deso_inputs"`           // Deprecated
+
+	// Values used to set TxnNonce. Note that only one of
+	// NonceExpirationBlockHeight and NonceExpirationBlockBuffer
+	// should be specified. If both are specified,
+	// NonceExpirationBlockBuffer is used.
+	NoncePartialID             uint64 `json:"nonce_partial_id"`
+	NonceExpirationBlockHeight uint64 `json:"nonce_expiration_block_height"`
+	NonceExpirationBlockBuffer uint64 `json:"nonce_expiration_block_buffer"`
+
+	// Values used to specify the fee for a transaction. Note that
+	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
+	// If both are specified, FeeRateNanosPerKB is used.
+	FeeRateNanosPerKB uint64 `json:"fee_rate_nanos_per_kb"`
+	TxnFeeNanos       uint64 `json:"txn_fee_nanos"`
 }
 
 type desoOutput struct {
@@ -36,6 +50,20 @@ type constructionMetadata struct {
 
 	// Allow legacy manual selection of UTXOs
 	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
+
+	// Values used to set TxnNonce. Note that only one of
+	// NonceExpirationBlockHeight and NonceExpirationBlockBuffer
+	// should be specified. If both are specified,
+	// NonceExpirationBlockBuffer is used.
+	NoncePartialID             uint64 `json:"nonce_partial_id"`
+	NonceExpirationBlockHeight uint64 `json:"nonce_expiration_block_height"`
+	NonceExpirationBlockBuffer uint64 `json:"nonce_expiration_block_buffer"`
+
+	// Values used to specify the fee for a transaction. Note that
+	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
+	// If both are specified, FeeRateNanosPerKB is used.
+	FeeRateNanosPerKB uint64 `json:"fee_rate_nanos_per_kb"`
+	TxnFeeNanos       uint64 `json:"txn_fee_nanos"`
 }
 
 type transactionMetadata struct {
@@ -44,6 +72,20 @@ type transactionMetadata struct {
 
 	// Allow legacy manual selection of UTXOs
 	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
+
+	// Values used to set TxnNonce. Note that only one of
+	// NonceExpirationBlockHeight and NonceExpirationBlockBuffer
+	// should be specified. If both are specified,
+	// NonceExpirationBlockBuffer is used.
+	NoncePartialID             uint64 `json:"nonce_partial_id"`
+	NonceExpirationBlockHeight uint64 `json:"nonce_expiration_block_height"`
+	NonceExpirationBlockBuffer uint64 `json:"nonce_expiration_block_buffer"`
+
+	// Values used to specify the fee for a transaction. Note that
+	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
+	// If both are specified, FeeRateNanosPerKB is used.
+	FeeRateNanosPerKB uint64 `json:"fee_rate_nanos_per_kb"`
+	TxnFeeNanos       uint64 `json:"txn_fee_nanos"`
 }
 
 type amountMetadata struct {

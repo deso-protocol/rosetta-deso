@@ -80,6 +80,31 @@ var (
 		Code:    11,
 		Message: "A transaction can only have one input",
 	}
+
+	ErrFeeRateBelowNetworkMinimum = &types.Error{
+		Code:    12,
+		Message: "Fee rate specified is below network minimum",
+	}
+
+	ErrFeeTooLow = &types.Error{
+		Code:    13,
+		Message: "Fee specified is too low",
+	}
+
+	ErrNonceExpirationBlockBufferTooLarge = &types.Error{
+		Code:    14,
+		Message: "Nonce expiration block buffer is too large",
+	}
+
+	ErrNonceExpirationBlockHeightTooLow = &types.Error{
+		Code:    15,
+		Message: "Nonce expiration block height is too low",
+	}
+
+	ErrNonceExpirationBlockHeightTooHigh = &types.Error{
+		Code:    16,
+		Message: "Nonce expiration block height is too high",
+	}
 )
 
 // wrapErr adds details to the types.Error provided. We use a function
