@@ -214,7 +214,6 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	if options.NoncePartialID > 0 {
 		txn.TxnNonce.PartialID = options.NoncePartialID
 	}
-	// TODO: validate that the expiration block height is valid.
 	currentBlockBuffer := uint64(lib.DefaultMaxNonceExpirationBlockHeightOffset)
 	if mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset > 0 {
 		currentBlockBuffer = mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset
