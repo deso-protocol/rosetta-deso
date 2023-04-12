@@ -11,6 +11,7 @@ import (
 	"github.com/deso-protocol/core/lib"
 	merkletree "github.com/deso-protocol/go-merkle-tree"
 	"github.com/deso-protocol/rosetta-deso/deso"
+	"github.com/pkg/errors"
 	"math/big"
 	"reflect"
 	"strconv"
@@ -101,33 +102,53 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 
 	var err error
 	if noncePartialID, exists := request.Metadata["nonce_partial_id"]; exists {
-		optionsObj.NoncePartialID, err = strconv.ParseUint(noncePartialID.(string), 10, 64)
+		noncePartialIDStr, ok := noncePartialID.(string)
+		if !ok {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("nonce_partial_id is not a string"))
+		}
+		optionsObj.NoncePartialID, err = strconv.ParseUint(noncePartialIDStr, 10, 64)
 		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "nonce_partial_id: %v", noncePartialIDStr))
 		}
 	}
 	if nonceExpirationBlockHeight, exists := request.Metadata["nonce_expiration_block_height"]; exists {
-		optionsObj.NonceExpirationBlockHeight, err = strconv.ParseUint(nonceExpirationBlockHeight.(string), 10, 64)
+		nonceExpirationBlockHeightStr, ok := nonceExpirationBlockHeight.(string)
+		if !ok {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("nonce_expiration_block_height is not a string"))
+		}
+		optionsObj.NonceExpirationBlockHeight, err = strconv.ParseUint(nonceExpirationBlockHeightStr, 10, 64)
 		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "nonce_expiration_block_height: %v", nonceExpirationBlockHeightStr))
 		}
 	}
 	if nonceExpirationBlockBuffer, exists := request.Metadata["nonce_expiration_block_buffer"]; exists {
-		optionsObj.NonceExpirationBlockBuffer, err = strconv.ParseUint(nonceExpirationBlockBuffer.(string), 10, 64)
+		nonceExpirationBlockBufferStr, ok := nonceExpirationBlockBuffer.(string)
+		if !ok {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("nonce_expiration_block_buffer is not a string"))
+		}
+		optionsObj.NonceExpirationBlockBuffer, err = strconv.ParseUint(nonceExpirationBlockBufferStr, 10, 64)
 		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "nonce_expiration_block_buffer: %v", nonceExpirationBlockBufferStr))
 		}
 	}
 	if feeRateNanosPerKB, exists := request.Metadata["fee_rate_nanos_per_kb"]; exists {
-		optionsObj.FeeRateNanosPerKB, err = strconv.ParseUint(feeRateNanosPerKB.(string), 10, 64)
+		feeRateNanosPerKBStr, ok := feeRateNanosPerKB.(string)
+		if !ok {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("fee_rate_nanos_per_kb is not a string"))
+		}
+		optionsObj.FeeRateNanosPerKB, err = strconv.ParseUint(feeRateNanosPerKBStr, 10, 64)
 		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "fee_rate_nanos_per_kb: %v", feeRateNanosPerKBStr))
 		}
 	}
 	if txnFeeNanos, exists := request.Metadata["txn_fee_nanos"]; exists {
-		optionsObj.TxnFeeNanos, err = strconv.ParseUint(txnFeeNanos.(string), 10, 64)
+		txnFeeNanosStr, ok := txnFeeNanos.(string)
+		if !ok {
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("txn_fee_nanos is not a string"))
+		}
+		optionsObj.TxnFeeNanos, err = strconv.ParseUint(txnFeeNanosStr, 10, 64)
 		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "txn_fee_nanos: %v", txnFeeNanosStr))
 		}
 	}
 
