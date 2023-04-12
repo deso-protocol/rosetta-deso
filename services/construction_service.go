@@ -102,55 +102,25 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 
 	var err error
 	// Parse nonce and fee fields from the metadata
-	if noncePartialID, exists := request.Metadata["nonce_partial_id"]; exists {
-		noncePartialIDStr, ok := noncePartialID.(string)
-		if !ok {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("nonce_partial_id is not a string"))
-		}
-		optionsObj.NoncePartialID, err = strconv.ParseUint(noncePartialIDStr, 10, 64)
-		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "nonce_partial_id: %v", noncePartialIDStr))
-		}
+	optionsObj.NoncePartialID, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_partial_id"))
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	if nonceExpirationBlockHeight, exists := request.Metadata["nonce_expiration_block_height"]; exists {
-		nonceExpirationBlockHeightStr, ok := nonceExpirationBlockHeight.(string)
-		if !ok {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("nonce_expiration_block_height is not a string"))
-		}
-		optionsObj.NonceExpirationBlockHeight, err = strconv.ParseUint(nonceExpirationBlockHeightStr, 10, 64)
-		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "nonce_expiration_block_height: %v", nonceExpirationBlockHeightStr))
-		}
+	optionsObj.NonceExpirationBlockHeight, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height"))
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	if NonceExpirationBlockHeightOffset, exists := request.Metadata["nonce_expiration_block_height_offset"]; exists {
-		NonceExpirationBlockHeightOffsetStr, ok := NonceExpirationBlockHeightOffset.(string)
-		if !ok {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("nonce_expiration_block_height_offset is not a string"))
-		}
-		optionsObj.NonceExpirationBlockHeightOffset, err = strconv.ParseUint(NonceExpirationBlockHeightOffsetStr, 10, 64)
-		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "nonce_expiration_block_height_offset: %v", NonceExpirationBlockHeightOffsetStr))
-		}
+	optionsObj.NonceExpirationBlockHeightOffset, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height_offset"))
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	if feeRateNanosPerKB, exists := request.Metadata["fee_rate_nanos_per_kb"]; exists {
-		feeRateNanosPerKBStr, ok := feeRateNanosPerKB.(string)
-		if !ok {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("fee_rate_nanos_per_kb is not a string"))
-		}
-		optionsObj.FeeRateNanosPerKB, err = strconv.ParseUint(feeRateNanosPerKBStr, 10, 64)
-		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "fee_rate_nanos_per_kb: %v", feeRateNanosPerKBStr))
-		}
+	optionsObj.FeeRateNanosPerKB, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "fee_rate_nanos_per_kb"))
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
-	if txnFeeNanos, exists := request.Metadata["txn_fee_nanos"]; exists {
-		txnFeeNanosStr, ok := txnFeeNanos.(string)
-		if !ok {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, fmt.Errorf("txn_fee_nanos is not a string"))
-		}
-		optionsObj.TxnFeeNanos, err = strconv.ParseUint(txnFeeNanosStr, 10, 64)
-		if err != nil {
-			return nil, wrapErr(ErrUnableToParseIntermediateResult, errors.Wrapf(err, "txn_fee_nanos: %v", txnFeeNanosStr))
-		}
+	optionsObj.TxnFeeNanos, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "txn_fee_nanos"))
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
 	options, err := types.MarshalMap(optionsObj)
@@ -161,6 +131,22 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 	return &types.ConstructionPreprocessResponse{
 		Options: options,
 	}, nil
+}
+
+func CheckMetadataForAttributeAndParseUint64(metadata map[string]interface{}, key string) (uint64, error) {
+	value, exists := metadata[key]
+	if !exists {
+		return 0, nil
+	}
+	valueStr, ok := value.(string)
+	if !ok {
+		return 0, fmt.Errorf("%s is not a string", key)
+	}
+	parsedValue, err := strconv.ParseUint(valueStr, 10, 64)
+	if err != nil {
+		return 0, errors.Wrapf(err, "%s: %v", key, valueStr)
+	}
+	return parsedValue, nil
 }
 
 func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, request *types.ConstructionMetadataRequest) (*types.ConstructionMetadataResponse, *types.Error) {
