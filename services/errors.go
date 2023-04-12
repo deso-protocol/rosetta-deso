@@ -105,6 +105,11 @@ var (
 		Code:    16,
 		Message: "Nonce expiration block height is too high",
 	}
+
+	ErrLegacyUtxoSelectionNotAllowed = &types.Error{
+		Code:    17,
+		Message: "Legacy UTXO selection is not allowed after the migration to balance model",
+	}
 )
 
 // wrapErr adds details to the types.Error provided. We use a function
