@@ -11,6 +11,7 @@ import (
 	"github.com/deso-protocol/core/lib"
 	merkletree "github.com/deso-protocol/go-merkle-tree"
 	"github.com/deso-protocol/rosetta-deso/deso"
+	"github.com/pkg/errors"
 	"math/big"
 	"reflect"
 	"strconv"
@@ -99,6 +100,29 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 		break
 	}
 
+	var err error
+	// Parse nonce and fee fields from the metadata
+	optionsObj.NoncePartialID, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_partial_id")
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+	optionsObj.NonceExpirationBlockHeight, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height")
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+	optionsObj.NonceExpirationBlockHeightOffset, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "nonce_expiration_block_height_offset")
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+	optionsObj.FeeRateNanosPerKB, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "fee_rate_nanos_per_kb")
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+	optionsObj.TxnFeeNanos, err = CheckMetadataForAttributeAndParseUint64(request.Metadata, "txn_fee_nanos")
+	if err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+
 	options, err := types.MarshalMap(optionsObj)
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -107,6 +131,22 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 	return &types.ConstructionPreprocessResponse{
 		Options: options,
 	}, nil
+}
+
+func CheckMetadataForAttributeAndParseUint64(metadata map[string]interface{}, key string) (uint64, error) {
+	value, exists := metadata[key]
+	if !exists {
+		return 0, nil
+	}
+	valueStr, ok := value.(string)
+	if !ok {
+		return 0, fmt.Errorf("%s is not a string", key)
+	}
+	parsedValue, err := strconv.ParseUint(valueStr, 10, 64)
+	if err != nil {
+		return 0, errors.Wrapf(err, "%s: %v", key, valueStr)
+	}
+	return parsedValue, nil
 }
 
 func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, request *types.ConstructionMetadataRequest) (*types.ConstructionMetadataResponse, *types.Error) {
@@ -119,15 +159,28 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
+	var options preprocessOptions
+	if err := types.UnmarshalMap(request.Options, &options); err != nil {
+		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	}
+
+	if options.LegacyUTXOSelection && s.node.GetBlockchain().BlockTip().Height >= s.node.Params.ForkHeights.BalanceModelBlockHeight {
+		return nil, ErrLegacyUtxoSelectionNotAllowed
+	}
+
 	// Determine the network-wide feePerKB rate
 	feePerKB := mempoolView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
 	if feePerKB == 0 {
 		feePerKB = deso.MinFeeRateNanosPerKB
 	}
-
-	var options preprocessOptions
-	if err := types.UnmarshalMap(request.Options, &options); err != nil {
-		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
+	// If the caller specified a fee rate that is too low, return an error
+	if options.FeeRateNanosPerKB > 0 && options.FeeRateNanosPerKB < feePerKB {
+		return nil, ErrFeeRateBelowNetworkMinimum
+	}
+	// We only want to use the fee rate if it's higher than the network-wide
+	// fee rate.
+	if options.FeeRateNanosPerKB > feePerKB {
+		feePerKB = options.FeeRateNanosPerKB
 	}
 
 	fullDeSoOutputs := []*lib.DeSoOutput{}
@@ -187,15 +240,58 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		}
 	}
 
+	// If the caller specified a partial ID, apply it to the transaction's nonce (as long as the nonce exists).
+	if options.NoncePartialID > 0 && txn.TxnNonce != nil {
+		txn.TxnNonce.PartialID = options.NoncePartialID
+	}
+	// Get the current max nonce expiration block height offset and current block height
+	currentMaxExpirationBlockHeightOffset := uint64(lib.DefaultMaxNonceExpirationBlockHeightOffset)
+	if mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset > 0 {
+		currentMaxExpirationBlockHeightOffset = mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset
+	}
+	currentBlockHeight := uint64(s.node.GetBlockchain().BlockTip().Height)
+	// If the caller specified a expiration block height offset,
+	// validate it and apply it to the transaction's nonce (as long as the nonce exists).
+	if options.NonceExpirationBlockHeightOffset > 0 && txn.TxnNonce != nil {
+		if options.NonceExpirationBlockHeightOffset > currentMaxExpirationBlockHeightOffset {
+			return nil, ErrNonceExpirationBlockHeightOffsetTooLarge
+		}
+		txn.TxnNonce.ExpirationBlockHeight = currentBlockHeight + options.NonceExpirationBlockHeightOffset
+	} else if options.NonceExpirationBlockHeight > 0 && txn.TxnNonce != nil {
+		// If the caller specified a expiration block height,
+		// validate it and apply it to the transaction's nonce (as long as the nonce exists).
+		if options.NonceExpirationBlockHeight < currentBlockHeight {
+			return nil, ErrNonceExpirationBlockHeightTooLow
+		}
+		if options.NonceExpirationBlockHeight > currentBlockHeight+currentMaxExpirationBlockHeightOffset {
+			return nil, ErrNonceExpirationBlockHeightTooHigh
+		}
+		txn.TxnNonce.ExpirationBlockHeight = options.NonceExpirationBlockHeight
+	}
+
+	// If the caller specified a fee, validate it and apply it to the transaction.
+	if options.TxnFeeNanos > 0 {
+		if txn.TxnFeeNanos > options.TxnFeeNanos {
+			return nil, ErrFeeTooLow
+		}
+		txn.TxnFeeNanos = options.TxnFeeNanos
+		fee = options.TxnFeeNanos
+	}
+
 	desoTxnBytes, err := txn.ToBytes(true)
 	if err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	metadata, err := types.MarshalMap(&constructionMetadata{
-		FeePerKB:            feePerKB,
-		DeSoSampleTxnHex:    hex.EncodeToString(desoTxnBytes),
-		LegacyUTXOSelection: options.LegacyUTXOSelection,
+		FeePerKB:                         feePerKB,
+		DeSoSampleTxnHex:                 hex.EncodeToString(desoTxnBytes),
+		LegacyUTXOSelection:              options.LegacyUTXOSelection,
+		NoncePartialID:                   options.NoncePartialID,
+		NonceExpirationBlockHeight:       options.NonceExpirationBlockHeight,
+		NonceExpirationBlockHeightOffset: options.NonceExpirationBlockHeightOffset,
+		TxnFeeNanos:                      options.TxnFeeNanos,
+		FeeRateNanosPerKB:                options.FeeRateNanosPerKB,
 	})
 	if err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
@@ -243,9 +339,14 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 	unsignedBytes := merkletree.Sha256DoubleHash(desoTxnBytes)
 
 	unsignedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:         desoTxnBytes,
-		InputAmounts:        inputAmounts,
-		LegacyUTXOSelection: metadata.LegacyUTXOSelection,
+		Transaction:                      desoTxnBytes,
+		InputAmounts:                     inputAmounts,
+		LegacyUTXOSelection:              metadata.LegacyUTXOSelection,
+		NoncePartialID:                   metadata.NoncePartialID,
+		NonceExpirationBlockHeight:       metadata.NonceExpirationBlockHeight,
+		NonceExpirationBlockHeightOffset: metadata.NonceExpirationBlockHeightOffset,
+		TxnFeeNanos:                      metadata.TxnFeeNanos,
+		FeeRateNanosPerKB:                metadata.FeeRateNanosPerKB,
 	})
 
 	return &types.ConstructionPayloadsResponse{
@@ -289,9 +390,14 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 	}
 
 	signedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:         signedTxnBytes,
-		InputAmounts:        unsignedTxn.InputAmounts,
-		LegacyUTXOSelection: unsignedTxn.LegacyUTXOSelection,
+		Transaction:                      signedTxnBytes,
+		InputAmounts:                     unsignedTxn.InputAmounts,
+		LegacyUTXOSelection:              unsignedTxn.LegacyUTXOSelection,
+		NoncePartialID:                   unsignedTxn.NoncePartialID,
+		NonceExpirationBlockHeight:       unsignedTxn.NonceExpirationBlockHeight,
+		NonceExpirationBlockHeightOffset: unsignedTxn.NonceExpirationBlockHeightOffset,
+		TxnFeeNanos:                      unsignedTxn.TxnFeeNanos,
+		FeeRateNanosPerKB:                unsignedTxn.FeeRateNanosPerKB,
 	})
 
 	return &types.ConstructionCombineResponse{

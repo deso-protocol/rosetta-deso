@@ -80,6 +80,36 @@ var (
 		Code:    11,
 		Message: "A transaction can only have one input",
 	}
+
+	ErrFeeRateBelowNetworkMinimum = &types.Error{
+		Code:    12,
+		Message: "Fee rate specified is below network minimum",
+	}
+
+	ErrFeeTooLow = &types.Error{
+		Code:    13,
+		Message: "Fee specified is too low",
+	}
+
+	ErrNonceExpirationBlockHeightOffsetTooLarge = &types.Error{
+		Code:    14,
+		Message: "Nonce expiration block height offset is too large",
+	}
+
+	ErrNonceExpirationBlockHeightTooLow = &types.Error{
+		Code:    15,
+		Message: "Nonce expiration block height is too low",
+	}
+
+	ErrNonceExpirationBlockHeightTooHigh = &types.Error{
+		Code:    16,
+		Message: "Nonce expiration block height is too high",
+	}
+
+	ErrLegacyUtxoSelectionNotAllowed = &types.Error{
+		Code:    17,
+		Message: "Legacy UTXO selection is not allowed after the migration to balance model",
+	}
 )
 
 // wrapErr adds details to the types.Error provided. We use a function
