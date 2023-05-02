@@ -138,7 +138,7 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 
 		metadata["TxnVersion"] = uint64(txn.TxnVersion)
 
-		if isBalanceModelTxn {
+		if isBalanceModelTxn && txn.TxnMeta.GetTxnType() != lib.TxnTypeBlockReward {
 			metadata["TxnNonce"] = map[string]uint64{
 				"ExpirationBlockHeight": txn.TxnNonce.ExpirationBlockHeight,
 				"PartialID":             txn.TxnNonce.PartialID,
