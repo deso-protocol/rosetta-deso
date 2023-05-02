@@ -139,10 +139,13 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 		metadata["TxnVersion"] = uint64(txn.TxnVersion)
 
 		if isBalanceModelTxn {
-			metadata["TxnNonce"] = map[string]uint64{
-				"ExpirationBlockHeight": txn.TxnNonce.ExpirationBlockHeight,
-				"PartialID":             txn.TxnNonce.PartialID,
+			if txn.TxnNonce != nil {
+				metadata["TxnNonce"] = map[string]uint64{
+					"ExpirationBlockHeight": txn.TxnNonce.ExpirationBlockHeight,
+					"PartialID":             txn.TxnNonce.PartialID,
+				}
 			}
+
 			metadata["TxnFeeNanos"] = txn.TxnFeeNanos
 		}
 
