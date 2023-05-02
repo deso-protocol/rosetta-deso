@@ -3,9 +3,8 @@
   --mode=ONLINE \
   --port=17006 \
   --node-port=18000 \
-  --data-directory=/tmp/rosetta-hypersync-online-mainnet-100067 \
+  --data-directory=/tmp/rosetta-hypersync-online-mainnet-100000 \
   --hypersync=true \
-  --max-sync-block-height=17000 \
-  --disable-slow-sync=false \
+  --sync-type=hypersync \
   --connect-ips=deso-seed-2.io:17000
 )
