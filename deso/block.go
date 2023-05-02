@@ -128,6 +128,24 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 		_ = json.Unmarshal(metadataJSON, &metadata)
 
 		txnHash := txn.Hash().String()
+
+		// DeSo started with a UTXO model but switched to a balance model at a particular block
+		// height. We need to handle both cases here.
+		isBalanceModelTxn := false
+		if block.Header.Height >= uint64(node.Params.ForkHeights.BalanceModelBlockHeight) {
+			isBalanceModelTxn = true
+		}
+
+		metadata["TxnVersion"] = uint64(txn.TxnVersion)
+
+		if isBalanceModelTxn {
+			metadata["TxnNonce"] = map[string]uint64{
+				"ExpirationBlockHeight": txn.TxnNonce.ExpirationBlockHeight,
+				"PartialID":             txn.TxnNonce.PartialID,
+			}
+			metadata["TxnFeeNanos"] = txn.TxnFeeNanos
+		}
+
 		transaction := &types.Transaction{
 			TransactionIdentifier: &types.TransactionIdentifier{Hash: txnHash},
 			Metadata:              metadata,
@@ -166,13 +184,6 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 			}
 
 			ops = append(ops, op)
-		}
-
-		// DeSo started with a UTXO model but switched to a balance model at a particular block
-		// height. We need to handle both cases here.
-		isBalanceModelTxn := false
-		if block.Header.Height >= uint64(node.Params.ForkHeights.BalanceModelBlockHeight) {
-			isBalanceModelTxn = true
 		}
 
 		// If we are dealing with a legacy UTXO transaction, then we need to add the outputs from
