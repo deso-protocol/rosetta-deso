@@ -146,7 +146,7 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 	err := index.db.View(func(txn *badger.Txn) error {
 		itemBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, false))
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "Key 1: (%v)", hypersyncHeightToBlockKey(blockHeight, false))
 		}
 		balancesBytes, err := itemBalances.ValueCopy(nil)
 		if err != nil {
@@ -158,7 +158,7 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 
 		itemLocked, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, true))
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "Key 2: (%v)", hypersyncHeightToBlockKey(blockHeight, true))
 		}
 		lockedBytes, err := itemLocked.ValueCopy(nil)
 		if err != nil {
@@ -170,7 +170,7 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 		return nil
 	})
 	if err != nil {
-		glog.Error(errors.Wrapf(err, "GetHypersyncBlockBalances: Problem getting block at height (%v)", blockHeight))
+		glog.Error(errors.Wrapf(err, "GetHypersyncBlockBalances: Problem getting block at height (%v) err (%v)", blockHeight, err))
 	}
 
 	return balances, lockedBalances
