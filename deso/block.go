@@ -815,7 +815,8 @@ func (node *Node) getDAOCoinLimitOrderOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*
 				OperationIdentifier: &types.OperationIdentifier{
 					Index: int64(numOps),
 				},
-				Type: InputOpType,
+				Type:   InputOpType,
+				Status: &SuccessStatus,
 				Account: &types.AccountIdentifier{
 					Address: bidderPublicKey,
 				},
