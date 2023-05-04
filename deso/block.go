@@ -247,6 +247,7 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, updateProfileOps...)
 
+			// Add inputs for DAO Coin Limit Orders
 			daoCoinLimitOrderOps := node.getDAOCoinLimitOrderOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, daoCoinLimitOrderOps...)
 		}

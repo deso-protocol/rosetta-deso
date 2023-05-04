@@ -5,6 +5,6 @@
   --node-port=18000 \
   --data-directory=/tmp/rosetta-hypersync-online-mainnet-100000 \
   --hypersync=true \
-  --sync-type=hypersync \
+  --sync-type=hypersync-archival \
   --connect-ips=deso-seed-2.io:17000
 )

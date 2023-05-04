@@ -3,4 +3,6 @@
   --node-port=17000 \
   --port=17005 \
   --data-directory=/tmp/rosetta-online-mainnet-00025 \
+  --sync-type=blocksync \
+  --hypersync=false \
 )
