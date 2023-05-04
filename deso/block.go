@@ -246,6 +246,10 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 			// Add inputs for update profile
 			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, updateProfileOps...)
+
+			// Add inputs for DAO Coin Limit Orders
+			daoCoinLimitOrderOps := node.getDAOCoinLimitOrderOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, daoCoinLimitOrderOps...)
 		}
 
 		transaction.Operations = squashOperations(ops)
@@ -789,6 +793,39 @@ func (node *Node) getUpdateProfileOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.
 		Amount: amount,
 	})
 
+	return operations
+}
+
+func (node *Node) getDAOCoinLimitOrderOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeDAOCoinLimitOrder {
+		return nil
+	}
+
+	var operations []*types.Operation
+	for _, bidderInput := range txn.TxnMeta.(*lib.DAOCoinLimitOrderMetadata).BidderInputs {
+		bidderPublicKey := lib.Base58CheckEncode(bidderInput.TransactorPublicKey.ToBytes(), false, node.Params)
+		for _, input := range bidderInput.Inputs {
+			inputAmount := node.getInputAmount(input, utxoOpsForTxn)
+			if inputAmount == nil {
+				fmt.Printf("Error: DAOCoinLimitOrder input was null for input: %v", input)
+				return nil
+			}
+
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(numOps),
+				},
+				Type:   InputOpType,
+				Status: &SuccessStatus,
+				Account: &types.AccountIdentifier{
+					Address: bidderPublicKey,
+				},
+				Amount: inputAmount,
+			})
+			numOps++
+		}
+
+	}
 	return operations
 }
 
