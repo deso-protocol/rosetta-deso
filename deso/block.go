@@ -137,6 +137,7 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 		}
 
 		metadata["TxnVersion"] = uint64(txn.TxnVersion)
+		metadata["TxnType"] = txn.TxnMeta.GetTxnType().String()
 
 		if isBalanceModelTxn {
 			if txn.TxnNonce != nil {
