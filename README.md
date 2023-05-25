@@ -31,7 +31,7 @@ docker build -t rosetta-deso -f Dockerfile ..
 You may need sudo:
 
 ```
-docker run -it rosetta-deso /deso/bin/rosetta-deso run
+docker run -p 17005:17005 -it rosetta-deso /deso/bin/rosetta-deso run
 ```
 
 Specify `--network=TESTNET --miner-public-keys=publickey` to get free testnet money. You
