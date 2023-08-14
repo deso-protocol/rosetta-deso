@@ -37,7 +37,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
 	require.NoError(err)
-	node.Index = NewIndex(rosettaIndex)
+	node.Index = NewIndex(rosettaIndex, node.chainDB)
 
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()

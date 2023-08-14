@@ -231,10 +231,10 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 
 	// Setup rosetta index
 	rosettaIndexDir := filepath.Join(node.Config.DataDirectory, "index")
-	rosettaIndexOpts := lib.PerformanceBadgerOptions(rosettaIndexDir)
+	rosettaIndexOpts := lib.DefaultBadgerOptions(rosettaIndexDir)
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
-	node.Index = NewIndex(rosettaIndex)
+	node.Index = NewIndex(rosettaIndex, node.chainDB)
 
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
@@ -292,6 +292,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.nodeMessageChan,
 		node.Config.ForceChecksum,
 	)
+	node.Index.snapshot = node.GetBlockchain().Snapshot()
 	if err != nil {
 		if shouldRestart {
 			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+
