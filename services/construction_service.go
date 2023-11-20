@@ -160,7 +160,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	var options preprocessOptions
-	if err := types.UnmarshalMap(request.Options, &options); err != nil {
+	if err = types.UnmarshalMap(request.Options, &options); err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
@@ -168,6 +168,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, ErrLegacyUtxoSelectionNotAllowed
 	}
 
+	// TODO: Hook up pos fee estimation rules.
 	// Determine the network-wide feePerKB rate
 	feePerKB := mempoolView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
 	if feePerKB == 0 {

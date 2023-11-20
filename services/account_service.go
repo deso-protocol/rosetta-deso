@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"strconv"
+	"strings"
 
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -52,11 +53,12 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 	blockchain := node.GetBlockchain()
 	currentBlock := blockchain.BlockTip()
 
-	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil, node.Server.GetBlockchain().Snapshot())
+	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil, node.Server.GetBlockchain().Snapshot(), nil)
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
+	// TODO: Hook up new PosMempool
 	mempoolView, err := node.GetMempool().GetAugmentedUniversalView()
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
@@ -85,6 +87,41 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 		if mempoolProfileEntry != nil {
 			mempoolBalance = mempoolProfileEntry.CreatorCoinEntry.DeSoLockedNanos
 		}
+	} else if strings.HasPrefix(account.SubAccount.Address, deso.StakeEntry) {
+		// Pull out the validator PKID
+		var validatorPKID *lib.PKID
+		validatorPKID, err = node.GetValidatorPKIDFromSubAccountIdentifier(account.SubAccount)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+
+		var dbStakeEntry *lib.StakeEntry
+		dbStakerPKID := dbView.GetPKIDForPublicKey(publicKeyBytes).PKID
+		dbStakeEntry, err = dbView.GetStakeEntry(validatorPKID, dbStakerPKID)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+		if dbStakeEntry != nil {
+			if !dbStakeEntry.StakeAmountNanos.IsUint64() {
+				return nil, wrapErr(ErrDeSo, fmt.Errorf("StakeAmountNanos is not a uint64"))
+			}
+			dbBalance = dbStakeEntry.StakeAmountNanos.Uint64()
+		}
+
+		mempoolStakerPKID := mempoolView.GetPKIDForPublicKey(publicKeyBytes).PKID
+
+		var mempoolStakeEntry *lib.StakeEntry
+		mempoolStakeEntry, err = mempoolView.GetStakeEntry(validatorPKID, mempoolStakerPKID)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+		if mempoolStakeEntry != nil {
+			if !mempoolStakeEntry.StakeAmountNanos.IsUint64() {
+				return nil, wrapErr(ErrDeSo, fmt.Errorf("StakeAmountNanos is not a uint64"))
+			}
+			mempoolBalance = mempoolStakeEntry.StakeAmountNanos.Uint64()
+		}
+
 	}
 
 	block := &types.BlockIdentifier{
@@ -144,9 +181,11 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 
 	var balance uint64
 	if account.SubAccount == nil {
-		balance = node.Index.GetBalanceSnapshot(false, publicKey, blockHeight)
+		balance = node.Index.GetBalanceSnapshot(deso.DESOBalance, publicKey, blockHeight)
 	} else if account.SubAccount.Address == deso.CreatorCoin {
-		balance = node.Index.GetBalanceSnapshot(true, publicKey, blockHeight)
+		balance = node.Index.GetBalanceSnapshot(deso.CreatorCoinLockedBalance, publicKey, blockHeight)
+	} else if strings.HasPrefix(account.SubAccount.Address, deso.StakeEntry) {
+		balance = node.Index.GetBalanceSnapshot(deso.StakedDESOBalance, publicKey, blockHeight)
 	}
 
 	//fmt.Printf("height: %v, addr (cc): %v, bal: %v\n", desoBlock.Header.Height, lib.PkToStringTestnet(publicKeyBytes), balance)
@@ -164,6 +203,7 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	}, nil
 }
 
+// TODO: Update for balance model
 func (s *AccountAPIService) AccountCoins(
 	ctx context.Context,
 	request *types.AccountCoinsRequest,
@@ -180,7 +220,7 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, s.node.Server.GetBlockchain().Snapshot())
+	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, s.node.Server.GetBlockchain().Snapshot(), nil)
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}

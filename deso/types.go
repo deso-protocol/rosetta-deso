@@ -18,6 +18,10 @@ const (
 	// CreatorCoin is the SubAccount address for a public key's
 	// total DESO locked in their creator coin.
 	CreatorCoin = "CREATOR_COIN"
+
+	// StakeEntry is the SubAccount address for a public key's
+	// total DESO locked in their stake entry.
+	StakeEntry = "STAKE_ENTRY"
 )
 
 var (

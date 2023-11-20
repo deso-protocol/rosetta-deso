@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/deso-protocol/core/lib"
@@ -251,6 +252,10 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 			// Add inputs for DAO Coin Limit Orders
 			daoCoinLimitOrderOps := node.getDAOCoinLimitOrderOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, daoCoinLimitOrderOps...)
+
+			// Add outputs for Stake Reward Distributions that are re-staked
+			stakeRewardOps := node.getStakingRewardDistributionOps(utxoOpsForTxn)
+			ops = append(ops, stakeRewardOps...)
 		}
 
 		transaction.Operations = squashOperations(ops)
@@ -563,6 +568,10 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 		},
 	})
 
+	// TODO: Do we need to do this for StakeEntries as well? If so,
+	// we'll need to expose the ToStakeEntries and FromStakeEntries
+	// in the UtxoOperation.
+
 	return operations
 }
 
@@ -853,6 +862,59 @@ func (node *Node) getBalanceModelSpends(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*li
 				Type:   InputOpType,
 			})
 			numOps++
+		}
+	}
+	return operations
+}
+
+func (node *Node) getSubAccountIdentifierForValidator(validatorPKID *lib.PKID) *types.SubAccountIdentifier {
+	return &types.SubAccountIdentifier{
+		Address: fmt.Sprintf("%v-%v", StakeEntry, lib.Base58CheckEncode(validatorPKID.ToBytes(), false, node.Params)),
+	}
+}
+
+func (node *Node) GetValidatorPKIDFromSubAccountIdentifier(subAccount *types.SubAccountIdentifier) (*lib.PKID, error) {
+	if subAccount == nil || !strings.HasPrefix(subAccount.Address, StakeEntry) {
+		return nil, fmt.Errorf("invalid subaccount for validator PKID extraction")
+	}
+	segments := strings.Split(subAccount.Address, "-")
+	if len(segments) != 2 {
+		return nil, fmt.Errorf("invalid subaccount for validator PKID extraction")
+	}
+	validatorPKIDBytes, _, err := lib.Base58CheckDecode(segments[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid subaccount for validator PKID extraction")
+	}
+	return lib.NewPKID(validatorPKIDBytes), nil
+}
+
+func (node *Node) getStakingRewardDistributionOps(utxoOps []*lib.UtxoOperation) []*types.Operation {
+	var operations []*types.Operation
+
+	for _, utxoOp := range utxoOps {
+		if utxoOp.Type == lib.OperationTypeStakeDistribution {
+			// TODO: We need to know the staker's public key somehow. For now we just use the
+			// staker PKID from the stake entry, but we'll probably add a point-in-time staker
+			// public key to the utxo op to simplify things.
+			// TODO: Validations???
+			prevStakeEntry := utxoOp.PrevStakeEntries[0]
+			stakeRewardRecipientPublicKey := prevStakeEntry.StakerPKID.ToBytes()
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(len(operations)),
+				},
+				Account: &types.AccountIdentifier{
+					Address:    lib.Base58CheckEncode(stakeRewardRecipientPublicKey, false, node.Params),
+					SubAccount: node.getSubAccountIdentifierForValidator(prevStakeEntry.ValidatorPKID),
+				},
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(utxoOp.StakeAmountNanosDiff, 10),
+					Currency: &Currency,
+				},
+
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			})
 		}
 	}
 	return operations
