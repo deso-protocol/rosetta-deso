@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/deso-protocol/core/lib"
-	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/stretchr/testify/require"
 	"path/filepath"
 	"testing"
@@ -70,7 +70,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 		minerCount,
 		true,
 		false,
-		false,
+		lib.NodeSyncTypeBlockSync,
 		0,
 		false,
 		rateLimitFeerateNanosPerKB,
@@ -91,7 +91,10 @@ func TestUtxoOpsProblem(t *testing.T) {
 		[]string{},
 		0,
 		node.EventManager,
-		nil,
+		node.nodeMessageChan,
+		node.Config.ForceChecksum,
+		"",
+		lib.HypersyncDefaultMaxQueueSize,
 	)
 	require.NoError(err)
 

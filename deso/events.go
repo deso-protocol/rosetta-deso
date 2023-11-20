@@ -2,9 +2,9 @@ package deso
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/deso-protocol/core/lib"
-	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 )
@@ -264,6 +264,8 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	if err != nil {
 		glog.Errorf("PutLockedBalanceSnapshot: %v", err)
 	}
+
+	// TODO: Add support for locked DESO balance entries here.
 }
 
 func (node *Node) handleTransactionConnected(event *lib.TransactionEvent) {

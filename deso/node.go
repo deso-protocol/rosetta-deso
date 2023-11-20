@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/deso-protocol/go-deadlock"
-	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v4"
 	"math/rand"
 	"net"
 	"os"
@@ -291,6 +291,8 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.EventManager,
 		node.nodeMessageChan,
 		node.Config.ForceChecksum,
+		"",
+		lib.HypersyncDefaultMaxQueueSize,
 	)
 	if err != nil {
 		if shouldRestart {
