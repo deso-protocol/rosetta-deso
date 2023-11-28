@@ -70,7 +70,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 		minerCount,
 		true,
 		false,
-		false,
+		lib.NodeSyncTypeBlockSync,
 		0,
 		false,
 		rateLimitFeerateNanosPerKB,
@@ -91,7 +91,10 @@ func TestUtxoOpsProblem(t *testing.T) {
 		[]string{},
 		0,
 		node.EventManager,
-		nil,
+		node.nodeMessageChan,
+		node.Config.ForceChecksum,
+		"",
+		lib.HypersyncDefaultMaxQueueSize,
 	)
 	require.NoError(err)
 

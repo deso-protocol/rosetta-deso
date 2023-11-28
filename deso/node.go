@@ -291,6 +291,8 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.EventManager,
 		node.nodeMessageChan,
 		node.Config.ForceChecksum,
+		"",
+		lib.HypersyncDefaultMaxQueueSize,
 	)
 	if err != nil {
 		if shouldRestart {
