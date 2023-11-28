@@ -467,7 +467,51 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	if err != nil {
 		glog.Errorf("PutLockedBalanceSnapshot: %v", err)
 	}
-	// TODO: Add support for stake entries, locked stake entries, and locked DESO balance entries here.
+
+	// Iterate over all validator entries that may have been modified.
+	validatorEntries := event.UtxoView.ValidatorPKIDToValidatorEntry
+	validatorEntryBalances := make(map[lib.PublicKey]uint64, len(validatorEntries))
+	for _, validator := range validatorEntries {
+		balanceToPut := uint64(0)
+		if !validator.IsDeleted() {
+			if !validator.TotalStakeAmountNanos.IsUint64() {
+				glog.Errorf("handleBlockConnected: TotalStakeAmountNanos is not a uint64")
+				continue
+			}
+			balanceToPut = validator.TotalStakeAmountNanos.Uint64()
+		}
+		validatorEntryBalances[*lib.NewPublicKey(validator.ValidatorPKID.ToBytes())] = balanceToPut
+	}
+	err = node.Index.PutBalanceSnapshot(event.Block.Header.Height, ValidatorStakedDESOBalance, validatorEntryBalances)
+	if err != nil {
+		glog.Errorf("PutStakedBalanceSnapshot: %v", err)
+	}
+
+	// Iterate over all locked stake entries that may have been modified.
+	lockedStakeEntries := event.UtxoView.LockedStakeMapKeyToLockedStakeEntry
+	lockedStakeEntryBalances := make(map[LockedStakeBalanceMapKey]uint64, len(lockedStakeEntries))
+	for _, lockedStakeEntry := range lockedStakeEntries {
+		balanceToPut := uint64(0)
+		if !lockedStakeEntry.IsDeleted() {
+			if !lockedStakeEntry.LockedAmountNanos.IsUint64() {
+				glog.Errorf("handleBlockConnected: LockedAmountNanos is not a uint64")
+				continue
+			}
+			balanceToPut = lockedStakeEntry.LockedAmountNanos.Uint64()
+		}
+		lockedStakeEntryBalances[LockedStakeBalanceMapKey{
+			StakerPKID:          *lockedStakeEntry.StakerPKID,
+			ValidatorPKID:       *lockedStakeEntry.ValidatorPKID,
+			LockedAtEpochNumber: lockedStakeEntry.LockedAtEpochNumber,
+		}] = balanceToPut
+	}
+
+	err = node.Index.PutLockedStakeBalanceSnapshot(event.Block.Header.Height, LockedStakeDESOBalance, lockedStakeEntryBalances)
+	if err != nil {
+		glog.Errorf("PutLockedStakeBalanceSnapshot: %v", err)
+	}
+
+	// TODO: Add support for locked DESO balance entries via coin lockups here.
 }
 
 func (node *Node) handleTransactionConnected(event *lib.TransactionEvent) {
