@@ -160,7 +160,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	var options preprocessOptions
-	if err := types.UnmarshalMap(request.Options, &options); err != nil {
+	if err = types.UnmarshalMap(request.Options, &options); err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 

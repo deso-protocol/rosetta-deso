@@ -271,6 +271,43 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 		transactions = append(transactions, transaction)
 	}
 
+	// Create a dummy transaction for the "block level" operations
+	// when we have the additional slice of utxo operations. This is used
+	// to capture staking rewards that are paid out at the block level, but
+	// have no transaction associated with them. The array of utxo operations
+	// at the index of # transactions in block + 1 is ALWAYS the block level
+	// utxo operations. At the end of a PoS epoch, we distribute staking rewards
+	// by either adding to the stake entry with the specified validator or
+	// directly deposit staking rewards to the staker's DESO balance. This is based
+	// on the configuration a user specifies when staking with a validator.
+	// We capture the non-restaked rewards the same way we capture basic transfer outputs,
+	// but with a dummy transaction. These are simple OUTPUTS to a staker's DESO balance.
+	// We capture the restaked rewards by adding an OUTPUT
+	// to the valiator's subaccount.
+	if len(utxoOpsForBlock) == len(block.Txns)+1 {
+		blockHash, err := block.Hash()
+		if err != nil {
+			// This is bad if this happens.
+			glog.Error(errors.Wrapf(err, "GetTransactionsForConvertBlock: Problem fetching block hash"))
+			return transactions
+		}
+		utxoOpsForBlockLevel := utxoOpsForBlock[len(utxoOpsForBlock)-1]
+		var ops []*types.Operation
+		// Add outputs for Stake Reward Distributions that are not re-staked. We use a fake transaction to
+		// avoid panic in getStakingRewardDistributionOps.
+		implicitOutputOps := node.getImplicitOutputs(&lib.MsgDeSoTxn{TxOutputs: nil}, utxoOpsForBlockLevel, len(ops))
+		ops = append(ops, implicitOutputOps...)
+		// Add outputs for Stake Reward Distributions that are re-staked
+		stakeRewardOps := node.getStakingRewardDistributionOps(utxoOpsForBlockLevel, len(ops))
+		ops = append(ops, stakeRewardOps...)
+
+		transaction := &types.Transaction{
+			TransactionIdentifier: &types.TransactionIdentifier{Hash: fmt.Sprintf("blockHash-%v", blockHash.String())},
+		}
+		transaction.Operations = squashOperations(ops)
+		transactions = append(transactions, transaction)
+	}
+
 	return transactions
 }
 
@@ -652,6 +689,10 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 			Currency: &Currency,
 		},
 	})
+
+	// TODO: Do we need to do this for ValidatorEntry and LockedStakeEntries as well? If so,
+	// we'll need to expose add ToValidatorEntry, FromValidatorEntry, ToLockedStakeEntries, and
+	// FromLockedStakeEntries to the UtxoOperation.
 
 	return operations
 }
@@ -1134,6 +1175,31 @@ func (node *Node) getUnlockStakeOps(txn *lib.MsgDeSoTxn, utxoOps []*lib.UtxoOper
 	return operations
 }
 
+func (node *Node) getStakingRewardDistributionOps(utxoOps []*lib.UtxoOperation, numOps int) []*types.Operation {
+	var operations []*types.Operation
+
+	for _, utxoOp := range utxoOps {
+		if utxoOp.Type == lib.OperationTypeStakeDistributionRestake {
+			prevValidatorEntry := utxoOp.PrevValidatorEntry
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(numOps),
+				},
+				Account: node.getValidatorEntrySubAccountIdentifierForValidator(prevValidatorEntry.ValidatorPKID),
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(utxoOp.StakeAmountNanosDiff, 10),
+					Currency: &Currency,
+				},
+
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			})
+			numOps++
+		}
+	}
+	return operations
+}
+
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
 	var operations []*types.Operation
 	numOutputs := uint32(len(txn.TxOutputs))
@@ -1163,7 +1229,8 @@ func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 
 			numOps++
 		}
-		if utxoOp.Type == lib.OperationTypeAddBalance {
+		if utxoOp.Type == lib.OperationTypeAddBalance ||
+			utxoOp.Type == lib.OperationTypeStakeDistributionPayToBalance {
 			operations = append(operations, &types.Operation{
 				OperationIdentifier: &types.OperationIdentifier{
 					Index: int64(numOps),
