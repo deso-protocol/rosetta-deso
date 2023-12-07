@@ -234,7 +234,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rosettaIndexOpts := lib.PerformanceBadgerOptions(rosettaIndexDir)
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
-	node.Index = NewIndex(rosettaIndex)
+	node.Index = NewIndex(rosettaIndex, node.chainDB)
 
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
@@ -294,6 +294,8 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
 	)
+	// Set the snapshot on the rosetta index.
+	node.Index.snapshot = node.GetBlockchain().Snapshot()
 	if err != nil {
 		if shouldRestart {
 			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+
