@@ -1,8 +1,7 @@
 package deso
 
 import (
-	"bytes"
-	"encoding/gob"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/deso-protocol/core/lib"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/glog"
@@ -26,16 +25,21 @@ const (
 	// See comments in block.go and convertBlock() for more details.
 	// <prefix 1 byte, blockHeight 8 bytes, isLocked 1 byte> -> map[lib.PublicKey]uint64
 	PrefixHypersyncBlockHeightToBalances = byte(3)
+
+	PrefixHypersyncBlockHeightLockedPublicKeyToBalance = byte(4)
 )
 
 type RosettaIndex struct {
-	db      *badger.DB
-	dbMutex sync.Mutex
+	db       *badger.DB
+	dbMutex  sync.Mutex
+	chainDB  *badger.DB
+	snapshot *lib.Snapshot
 }
 
-func NewIndex(db *badger.DB) *RosettaIndex {
+func NewIndex(db *badger.DB, chainDB *badger.DB) *RosettaIndex {
 	return &RosettaIndex{
-		db: db,
+		db:      db,
+		chainDB: chainDB,
 	}
 }
 
@@ -49,49 +53,12 @@ func (index *RosettaIndex) utxoOpsKey(blockHash *lib.BlockHash) []byte {
 	return prefix
 }
 
-func (index *RosettaIndex) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*lib.UtxoOperation) error {
-	blockHash, err := block.Hash()
-	if err != nil {
-		return err
-	}
-
-	opBundle := &lib.UtxoOperationBundle{
-		UtxoOpBundle: utxoOps,
-	}
-	bytes := lib.EncodeToBytes(block.Header.Height, opBundle)
-
-	return index.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(index.utxoOpsKey(blockHash), bytes)
-	})
-}
-
 func (index *RosettaIndex) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOperation, error) {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return nil, err
 	}
-
-	opBundle := &lib.UtxoOperationBundle{}
-
-	err = index.db.View(func(txn *badger.Txn) error {
-		utxoOpsItem, err := txn.Get(index.utxoOpsKey(blockHash))
-		if err != nil {
-			return err
-		}
-
-		return utxoOpsItem.Value(func(valBytes []byte) error {
-			rr := bytes.NewReader(valBytes)
-			if exist, err := lib.DecodeFromBytes(opBundle, rr); !exist || err != nil {
-				return errors.Wrapf(err, "Problem decoding utxoops, exist: (%v)", exist)
-			}
-			return nil
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return opBundle.UtxoOpBundle, nil
+	return lib.GetUtxoOperationsForBlock(index.chainDB, index.snapshot, blockHash)
 }
 
 //
@@ -111,6 +78,31 @@ func balanceSnapshotKey(isLockedBalance bool, publicKey *lib.PublicKey, blockHei
 	return prefix
 }
 
+func hypersyncHeightToToBlockPublicKeyBalance(blockHeight uint64, isLocked bool, publicKey lib.PublicKey) []byte {
+	lockedByte := byte(0)
+	if isLocked {
+		lockedByte = byte(1)
+	}
+
+	prefix := append([]byte{}, PrefixHypersyncBlockHeightLockedPublicKeyToBalance)
+	prefix = append(prefix, lib.EncodeUint64(blockHeight)...)
+	prefix = append(prefix, lockedByte)
+	prefix = append(prefix, publicKey.ToBytes()...)
+	return prefix
+}
+
+func hypersyncHeightToBlockPublicKeyBalancePrefix(blockHeight uint64, isLocked bool) []byte {
+	lockedByte := byte(0)
+	if isLocked {
+		lockedByte = byte(1)
+	}
+
+	prefix := append([]byte{}, PrefixHypersyncBlockHeightLockedPublicKeyToBalance)
+	prefix = append(prefix, lib.EncodeUint64(blockHeight)...)
+	prefix = append(prefix, lockedByte)
+	return prefix
+}
+
 func hypersyncHeightToBlockKey(blockHeight uint64, isLocked bool) []byte {
 
 	lockedByte := byte(0)
@@ -124,18 +116,43 @@ func hypersyncHeightToBlockKey(blockHeight uint64, isLocked bool) []byte {
 	return prefix
 }
 
-func (index *RosettaIndex) PutHypersyncBlockBalances(blockHeight uint64, isLocked bool, balances map[lib.PublicKey]uint64) {
+type PubKeyBalance struct {
+	PublicKey lib.PublicKey
+	Balance   uint64
+}
 
-	err := index.db.Update(func(txn *badger.Txn) error {
-		blockBytes := bytes.NewBuffer([]byte{})
-		if err := gob.NewEncoder(blockBytes).Encode(&balances); err != nil {
-			return err
-		}
-		return txn.Set(hypersyncHeightToBlockKey(blockHeight, isLocked), blockBytes.Bytes())
-	})
-	if err != nil {
-		glog.Error(errors.Wrapf(err, "PutHypersyncBlockBalances: Problem putting block: Error:"))
+func (index *RosettaIndex) PutHypersyncBlockBalances(blockHeight uint64, isLocked bool, balances map[lib.PublicKey]uint64) error {
+	var balanceStructs []PubKeyBalance
+	for pubKey, balance := range balances {
+		balanceStructs = append(balanceStructs, PubKeyBalance{pubKey, balance})
 	}
+	chunks := ChunkArray(balanceStructs, 1000)
+	for _, chunk := range chunks {
+		err := index.db.Update(func(txn *badger.Txn) error {
+			for _, pubKeyBalance := range chunk {
+				if err := txn.Set(hypersyncHeightToToBlockPublicKeyBalance(blockHeight, isLocked, pubKeyBalance.PublicKey), lib.UintToBuf(pubKeyBalance.Balance)); err != nil {
+					return errors.Wrapf(err, "PutHypersyncBlockBalance: Problem putting balance for pub key: %v", lib.PkToStringBoth(pubKeyBalance.PublicKey.ToBytes()))
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return errors.Wrapf(err, "PutHypersyncBlockBalances: Problem putting balances for block %v", blockHeight)
+		}
+	}
+	return nil
+}
+
+func ChunkArray[T any](arr []T, chunkSize int) [][]T {
+	var chunks [][]T
+	for i := 0; i < len(arr); i += chunkSize {
+		end := i + chunkSize
+		if end > len(arr) {
+			end = len(arr)
+		}
+		chunks = append(chunks, arr[i:end])
+	}
+	return chunks
 }
 
 func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
@@ -144,31 +161,18 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 	balances := make(map[lib.PublicKey]uint64)
 	lockedBalances := make(map[lib.PublicKey]uint64)
 	err := index.db.View(func(txn *badger.Txn) error {
-		itemBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, false))
-		if err != nil {
-			return err
+		var innerErr error
+		balances, innerErr = index.GetHypersyncBlockBalanceByLockStatus(txn, blockHeight, false)
+		if innerErr != nil {
+			return innerErr
 		}
-		balancesBytes, err := itemBalances.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		if err := gob.NewDecoder(bytes.NewReader(balancesBytes)).Decode(&balances); err != nil {
-			return err
-		}
-
-		itemLocked, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, true))
-		if err != nil {
-			return err
-		}
-		lockedBytes, err := itemLocked.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		if err := gob.NewDecoder(bytes.NewReader(lockedBytes)).Decode(&lockedBalances); err != nil {
-			return err
+		lockedBalances, innerErr = index.GetHypersyncBlockBalanceByLockStatus(txn, blockHeight, true)
+		if innerErr != nil {
+			return innerErr
 		}
 		return nil
 	})
+	//TODO: should this function return an error?
 	if err != nil {
 		glog.Error(errors.Wrapf(err, "GetHypersyncBlockBalances: Problem getting block at height (%v)", blockHeight))
 	}
@@ -176,24 +180,61 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 	return balances, lockedBalances
 }
 
+func (index *RosettaIndex) GetHypersyncBlockBalanceByLockStatus(txn *badger.Txn, blockHeight uint64, isLocked bool) (map[lib.PublicKey]uint64, error) {
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchValues = true // TODO: what's the right value here?
+
+	it := txn.NewIterator(opts)
+	defer it.Close()
+
+	res := make(map[lib.PublicKey]uint64)
+	locationInKey := 1 + 8 + 1 // 1 byte for prefix, 8 bytes for block height, 1 byte for isLocked
+	prefix := hypersyncHeightToBlockPublicKeyBalancePrefix(blockHeight, isLocked)
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		item := it.Item()
+		key := item.Key()
+		if len(key) != locationInKey+btcec.PubKeyBytesLenCompressed {
+			return nil, errors.Errorf("GetHypersyncBlockBalanceByLockStatus: Invalid key length: %v", key)
+		}
+		value, err := item.ValueCopy(nil)
+		if err != nil {
+			return nil, errors.Wrapf(err, "GetHypersyncBlockBalanceByLockStatus: Problem getting value for key: %v", key)
+		}
+		res[*lib.NewPublicKey(key[locationInKey:])] = lib.DecodeUint64(value) // TODO: validation that bytes from key are valid public key.
+	}
+	return res, nil
+}
+
 func (index *RosettaIndex) PutBalanceSnapshot(
 	height uint64, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
 
-	return index.db.Update(func(txn *badger.Txn) error {
-		return index.PutBalanceSnapshotWithTxn(txn, height, isLockedBalance, balances)
-	})
-}
-
-func (index *RosettaIndex) PutBalanceSnapshotWithTxn(
-	txn *badger.Txn, height uint64, isLockedBalance bool, balances map[lib.PublicKey]uint64) error {
-
-	for pk, bal := range balances {
-		if err := txn.Set(balanceSnapshotKey(isLockedBalance, &pk, height, bal), []byte{}); err != nil {
-			return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
-				"%v pub key: %v balance: %v", height, pk, bal)
+	var balanceStructs []PubKeyBalance
+	for pubKey, balance := range balances {
+		balanceStructs = append(balanceStructs, PubKeyBalance{pubKey, balance})
+	}
+	chunks := ChunkArray(balanceStructs, 1000)
+	for _, chunk := range chunks {
+		err := index.db.Update(func(txn *badger.Txn) error {
+			for _, pubKeyBalance := range chunk {
+				if err := txn.Set(balanceSnapshotKey(isLockedBalance, &pubKeyBalance.PublicKey, height, pubKeyBalance.Balance), []byte{}); err != nil {
+					return errors.Wrapf(err, "PutBalanceSnapshot: Problem putting balance for pub key: %v", lib.PkToStringBoth(pubKeyBalance.PublicKey.ToBytes()))
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return errors.Wrapf(err, "PutBalanceSnapshot: Problem putting balances for block %v", height)
 		}
 	}
 	return nil
+}
+
+func (index *RosettaIndex) PutSingleBalanceSnapshot(
+	height uint64, isLockedBalance bool, publicKey lib.PublicKey, balance uint64) error {
+
+	return index.db.Update(func(txn *badger.Txn) error {
+		return index.PutSingleBalanceSnapshotWithTxn(txn, height, isLockedBalance, publicKey, balance)
+	})
 }
 
 func (index *RosettaIndex) PutSingleBalanceSnapshotWithTxn(
