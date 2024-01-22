@@ -9,10 +9,6 @@ type preprocessOptions struct {
 	// The outputs are used to compute the fee estimate in the metadata portion.
 	DeSoOutputs []*desoOutput `json:"deso_outputs"`
 
-	// Allow legacy manual selection of UTXOs
-	LegacyUTXOSelection bool         `json:"legacy_utxo_selection"` // Deprecated
-	DeSoInputs          []*desoInput `json:"deso_inputs"`           // Deprecated
-
 	// Values used to set TxnNonce. Note that only one of
 	// NonceExpirationBlockHeight and NonceExpirationBlockHeightOffset
 	// should be specified. If both are specified,
@@ -61,31 +57,6 @@ type constructionMetadata struct {
 	// on this transaction are also used in the offline portion in order to construct the
 	// final transaction.
 	DeSoSampleTxnHex string `json:"deso_sample_txn_hex"`
-
-	// Allow legacy manual selection of UTXOs
-	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
-
-	// Values used to set TxnNonce. Note that only one of
-	// NonceExpirationBlockHeight and NonceExpirationBlockHeightOffset
-	// should be specified. If both are specified,
-	// NonceExpirationBlockHeightOffset is used.
-	NoncePartialID                   uint64 `json:"nonce_partial_id"`
-	NonceExpirationBlockHeight       uint64 `json:"nonce_expiration_block_height"`
-	NonceExpirationBlockHeightOffset uint64 `json:"nonce_expiration_block_height_offset"`
-
-	// Values used to specify the fee for a transaction. Note that
-	// only one of FeeRateNanosPerKB and TxnFeeNanos should be specified.
-	// If both are specified, FeeRateNanosPerKB is used.
-	FeeRateNanosPerKB uint64 `json:"fee_rate_nanos_per_kb"`
-	TxnFeeNanos       uint64 `json:"txn_fee_nanos"`
-}
-
-type transactionMetadata struct {
-	Transaction  []byte   `json:"transaction"`
-	InputAmounts []string `json:"input_amount"`
-
-	// Allow legacy manual selection of UTXOs
-	LegacyUTXOSelection bool `json:"legacy_utxo_selection"` // Deprecated
 
 	// Values used to set TxnNonce. Note that only one of
 	// NonceExpirationBlockHeight and NonceExpirationBlockHeightOffset
