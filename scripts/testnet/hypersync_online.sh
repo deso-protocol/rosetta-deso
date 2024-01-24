@@ -8,4 +8,5 @@
   --sync-type=hypersync \
   --force-checksum=false \
   --network TESTNET \
+  # --connect-ips=test.deso.org:18000 \
 )

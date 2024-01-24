@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -13,7 +12,6 @@ import (
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"github.com/pkg/errors"
 	"math/big"
-	"reflect"
 	"strconv"
 )
 
@@ -59,21 +57,6 @@ func (s *ConstructionAPIService) ConstructionPreprocess(ctx context.Context, req
 		if op.Type == deso.InputOpType {
 			// Add the account identifier to our map
 			inputPubKeysFoundMap[op.Account.Address] = true
-
-			if request.Metadata != nil {
-				if useLegacyUtxos, exists := request.Metadata["legacy_utxo_selection"]; exists && useLegacyUtxos.(bool) {
-					txId, txnIndex, err := ParseCoinIdentifier(op.CoinChange.CoinIdentifier)
-					if err != nil {
-						return nil, wrapErr(ErrInvalidCoin, err)
-					}
-
-					// Include the inputs in case we use legacy utxo selection
-					optionsObj.DeSoInputs = append(optionsObj.DeSoInputs, &desoInput{
-						TxHex: hex.EncodeToString(txId.ToBytes()),
-						Index: txnIndex,
-					})
-				}
-			}
 		} else if op.Type == deso.OutputOpType {
 			// Parse the amount of this output
 			amount, err := strconv.ParseUint(op.Amount.Value, 10, 64)
@@ -164,10 +147,6 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	if options.LegacyUTXOSelection && s.node.GetBlockchain().BlockTip().Height >= s.node.Params.ForkHeights.BalanceModelBlockHeight {
-		return nil, ErrLegacyUtxoSelectionNotAllowed
-	}
-
 	// Determine the network-wide feePerKB rate
 	feePerKB := mempoolView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
 	if feePerKB == 0 {
@@ -209,35 +188,9 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	var fee uint64
-
-	// Support legacy utxo selection
-	if options.LegacyUTXOSelection {
-		txn.TxInputs = []*lib.DeSoInput{}
-		for _, input := range options.DeSoInputs {
-			txId, err := hex.DecodeString(input.TxHex)
-			if err != nil {
-				return nil, wrapErr(ErrInvalidTransaction, err)
-			}
-
-			txn.TxInputs = append(txn.TxInputs, &lib.DeSoInput{
-				TxID:  *lib.NewBlockHash(txId),
-				Index: input.Index,
-			})
-		}
-
-		txnBytes, err := txn.ToBytes(true)
-		if err != nil {
-			return nil, wrapErr(ErrInvalidTransaction, err)
-		}
-
-		// Override fee calculation
-		txnSize := uint64(len(txnBytes) + MaxDERSigLen + FeeByteBuffer)
-		fee = feePerKB * txnSize / BytesPerKb
-	} else {
-		_, _, _, fee, err = s.node.GetBlockchain().AddInputsAndChangeToTransaction(txn, feePerKB, s.node.GetMempool())
-		if err != nil {
-			return nil, wrapErr(ErrInvalidTransaction, err)
-		}
+	_, _, _, fee, err = s.node.GetBlockchain().AddInputsAndChangeToTransaction(txn, feePerKB, s.node.GetMempool())
+	if err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
 	// If the caller specified a partial ID, apply it to the transaction's nonce (as long as the nonce exists).
@@ -286,7 +239,6 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	metadata, err := types.MarshalMap(&constructionMetadata{
 		FeePerKB:                         feePerKB,
 		DeSoSampleTxnHex:                 hex.EncodeToString(desoTxnBytes),
-		LegacyUTXOSelection:              options.LegacyUTXOSelection,
 		NoncePartialID:                   options.NoncePartialID,
 		NonceExpirationBlockHeight:       options.NonceExpirationBlockHeight,
 		NonceExpirationBlockHeightOffset: options.NonceExpirationBlockHeightOffset,
@@ -331,26 +283,14 @@ func (s *ConstructionAPIService) ConstructionPayloads(ctx context.Context, reque
 	}
 
 	// We should only have one input with the balance model
-	// TODO: This check is disabled to support legacy utxo selection
-	//if len(inputAmounts) != 1 {
-	//	return nil, wrapErr(ErrInvalidTransaction, fmt.Errorf("Txn must have exactly one input but found %v", len(inputAmounts)))
-	//}
+	if len(inputAmounts) != 1 {
+		return nil, wrapErr(ErrInvalidTransaction, fmt.Errorf("Txn must have exactly one input but found %v", len(inputAmounts)))
+	}
 
 	unsignedBytes := merkletree.Sha256DoubleHash(desoTxnBytes)
 
-	unsignedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:                      desoTxnBytes,
-		InputAmounts:                     inputAmounts,
-		LegacyUTXOSelection:              metadata.LegacyUTXOSelection,
-		NoncePartialID:                   metadata.NoncePartialID,
-		NonceExpirationBlockHeight:       metadata.NonceExpirationBlockHeight,
-		NonceExpirationBlockHeightOffset: metadata.NonceExpirationBlockHeightOffset,
-		TxnFeeNanos:                      metadata.TxnFeeNanos,
-		FeeRateNanosPerKB:                metadata.FeeRateNanosPerKB,
-	})
-
 	return &types.ConstructionPayloadsResponse{
-		UnsignedTransaction: hex.EncodeToString(unsignedTxn),
+		UnsignedTransaction: hex.EncodeToString(desoTxnBytes),
 		Payloads: []*types.SigningPayload{
 			{
 				AccountIdentifier: signingAccount,
@@ -367,13 +307,8 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	var unsignedTxn transactionMetadata
-	if err := json.Unmarshal(unsignedTxnBytes, &unsignedTxn); err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
-	}
-
 	desoTxn := &lib.MsgDeSoTxn{}
-	if err = desoTxn.FromBytes(unsignedTxn.Transaction); err != nil {
+	if err = desoTxn.FromBytes(unsignedTxnBytes); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
@@ -389,19 +324,8 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	signedTxn, err := json.Marshal(&transactionMetadata{
-		Transaction:                      signedTxnBytes,
-		InputAmounts:                     unsignedTxn.InputAmounts,
-		LegacyUTXOSelection:              unsignedTxn.LegacyUTXOSelection,
-		NoncePartialID:                   unsignedTxn.NoncePartialID,
-		NonceExpirationBlockHeight:       unsignedTxn.NonceExpirationBlockHeight,
-		NonceExpirationBlockHeightOffset: unsignedTxn.NonceExpirationBlockHeightOffset,
-		TxnFeeNanos:                      unsignedTxn.TxnFeeNanos,
-		FeeRateNanosPerKB:                unsignedTxn.FeeRateNanosPerKB,
-	})
-
 	return &types.ConstructionCombineResponse{
-		SignedTransaction: hex.EncodeToString(signedTxn),
+		SignedTransaction: hex.EncodeToString(signedTxnBytes),
 	}, nil
 }
 
@@ -429,13 +353,8 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	var metadata transactionMetadata
-	if err := json.Unmarshal(txnBytes, &metadata); err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
-	}
-
 	desoTxn := &lib.MsgDeSoTxn{}
-	if err = desoTxn.FromBytes(metadata.Transaction); err != nil {
+	if err = desoTxn.FromBytes(txnBytes); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
@@ -444,29 +363,30 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 	}
 
 	numOps := int64(0)
-	var operations []*types.Operation
-
-	for _, inputAmount := range metadata.InputAmounts {
-		operations = append(operations, &types.Operation{
-			Type: deso.InputOpType,
-			OperationIdentifier: &types.OperationIdentifier{
-				Index: numOps,
-			},
-			Account: signer,
-			Amount: &types.Amount{
-				Value:    inputAmount,
-				Currency: s.config.Currency,
-			},
-		})
-		numOps += 1
-	}
-
+	totalInput := desoTxn.TxnFeeNanos
 	for _, output := range desoTxn.TxOutputs {
-		// Skip the change output when NOT using legacy utxo selection
-		if !metadata.LegacyUTXOSelection && reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
-			continue
-		}
+		totalInput += output.AmountNanos
+	}
+	var operations []*types.Operation
+	operations = append(operations, &types.Operation{
+		OperationIdentifier: &types.OperationIdentifier{
+			Index: numOps,
+		},
 
+		Account: &types.AccountIdentifier{
+			Address: lib.Base58CheckEncode(desoTxn.PublicKey, false, s.node.Params),
+		},
+
+		Amount: &types.Amount{
+			Value:    strconv.FormatInt(int64(totalInput)*-1, 10),
+			Currency: &deso.Currency,
+		},
+
+		Type: deso.InputOpType,
+	})
+	numOps += 1
+	for _, output := range desoTxn.TxOutputs {
+		totalInput += output.AmountNanos
 		op := &types.Operation{
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: numOps,
@@ -512,13 +432,8 @@ func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
-	var txn transactionMetadata
-	if err := json.Unmarshal(txnBytes, &txn); err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
-	}
-
 	desoTxn := &lib.MsgDeSoTxn{}
-	if err = desoTxn.FromBytes(txn.Transaction); err != nil {
+	if err = desoTxn.FromBytes(txnBytes); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
