@@ -27,12 +27,7 @@ func (s *MempoolAPIService) Mempool(ctx context.Context, request *types.NetworkR
 		//return nil, wrapErr(ErrUnavailableOffline, nil)
 	}
 
-	mempool := s.node.GetMempool()
-	transactions, _, err := mempool.GetTransactionsOrderedByTimeAdded()
-	if err != nil {
-		return nil, ErrDeSo
-	}
-
+	transactions := s.node.GetMempool().GetOrderedTransactions()
 	transactionIdentifiers := []*types.TransactionIdentifier{}
 	for _, transaction := range transactions {
 		transactionIdentifiers = append(transactionIdentifiers, &types.TransactionIdentifier{Hash: transaction.Hash.String()})
