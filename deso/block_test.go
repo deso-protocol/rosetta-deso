@@ -95,6 +95,14 @@ func TestUtxoOpsProblem(t *testing.T) {
 		node.Config.ForceChecksum,
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
+		nil,        // TODO: support for rosetta as a validator?
+		3000000000, // 3GB max mempool size bytes
+		30000,      // 30 seconds mempool back up time millis
+		1,          // 1, mempool fee estimator num mempool blocks
+		50,         // 50, mempool fee estimator num past blocks
+		10,         // 10 milliseconds, augmented block view refresh interval millis
+		1500,       // 1500 milliseconds, pos block production interval milliseconds
+		30000,      // 30 seconds, pos timeout base duration milliseconds
 	)
 	require.NoError(err)
 

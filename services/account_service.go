@@ -59,7 +59,6 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
-	// TODO: Hook up new PosMempool
 	mempoolView, err := node.GetMempool().GetAugmentedUniversalView()
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)

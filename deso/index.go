@@ -12,6 +12,9 @@ import (
 )
 
 const (
+	// Note: UtxoOps are no longer used because we directly pull them from the node's
+	// badger db. We keep this prefix around so it is clear why the others are numbered
+	// as they are.
 	PrefixUtxoOps = byte(0)
 
 	// Public key balances
@@ -66,6 +69,12 @@ func (index *RosettaIndex) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOpe
 // Balance Snapshots
 //
 
+// BalanceType is introduced with PoS to differentiate between different types of balances.
+// Previously, there were only two types - DESOBalance and CreatorCoinLockedBalance. These
+// were distinguished by a boolean "locked". We took advantage of the fact that
+// DESOBalance was represented by false (byte representation of 0) and CreatorCoinLockedBalance
+// was represented by true (byte representation of 1). This allows us to avoid a resync of
+// rosetta with this upgrade.
 type BalanceType uint8
 
 const (
@@ -111,25 +120,10 @@ func lockedStakeBalanceSnapshotKey(
 	return prefix
 }
 
-func (balanceType BalanceType) HypersyncBalanceTypePrefix() byte {
-	switch balanceType {
-	case DESOBalance:
-		return 0
-	case CreatorCoinLockedBalance:
-		return 1
-	case ValidatorStakedDESOBalance:
-		return 2
-	case LockedStakeDESOBalance:
-		return 3
-	default:
-		panic("unknown balance type")
-	}
-}
-
 func hypersyncHeightToBlockKey(blockHeight uint64, balanceType BalanceType) []byte {
 	prefix := append([]byte{}, PrefixHypersyncBlockHeightToBalances)
 	prefix = append(prefix, lib.EncodeUint64(blockHeight)...)
-	prefix = append(prefix, balanceType.HypersyncBalanceTypePrefix())
+	prefix = append(prefix, byte(balanceType))
 	return prefix
 }
 
