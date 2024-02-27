@@ -37,13 +37,16 @@ const (
 )
 
 type RosettaIndex struct {
-	db      *badger.DB
-	dbMutex sync.Mutex
+	db       *badger.DB
+	dbMutex  sync.Mutex
+	chainDB  *badger.DB
+	snapshot *lib.Snapshot
 }
 
-func NewIndex(db *badger.DB) *RosettaIndex {
+func NewIndex(db *badger.DB, chainDB *badger.DB) *RosettaIndex {
 	return &RosettaIndex{
-		db: db,
+		db:      db,
+		chainDB: chainDB,
 	}
 }
 
@@ -51,55 +54,12 @@ func NewIndex(db *badger.DB) *RosettaIndex {
 // Utxo Operations
 //
 
-func (index *RosettaIndex) utxoOpsKey(blockHash *lib.BlockHash) []byte {
-	prefix := append([]byte{}, PrefixUtxoOps)
-	prefix = append(prefix, blockHash.ToBytes()...)
-	return prefix
-}
-
-func (index *RosettaIndex) PutUtxoOps(block *lib.MsgDeSoBlock, utxoOps [][]*lib.UtxoOperation) error {
-	blockHash, err := block.Hash()
-	if err != nil {
-		return err
-	}
-
-	opBundle := &lib.UtxoOperationBundle{
-		UtxoOpBundle: utxoOps,
-	}
-	utxoOpsBytes := lib.EncodeToBytes(block.Header.Height, opBundle)
-
-	return index.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(index.utxoOpsKey(blockHash), utxoOpsBytes)
-	})
-}
-
 func (index *RosettaIndex) GetUtxoOps(block *lib.MsgDeSoBlock) ([][]*lib.UtxoOperation, error) {
 	blockHash, err := block.Hash()
 	if err != nil {
 		return nil, err
 	}
-
-	opBundle := &lib.UtxoOperationBundle{}
-
-	err = index.db.View(func(txn *badger.Txn) error {
-		utxoOpsItem, err := txn.Get(index.utxoOpsKey(blockHash))
-		if err != nil {
-			return err
-		}
-
-		return utxoOpsItem.Value(func(valBytes []byte) error {
-			rr := bytes.NewReader(valBytes)
-			if exist, err := lib.DecodeFromBytes(opBundle, rr); !exist || err != nil {
-				return errors.Wrapf(err, "Problem decoding utxoops, exist: (%v)", exist)
-			}
-			return nil
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return opBundle.UtxoOpBundle, nil
+	return lib.GetUtxoOperationsForBlock(index.chainDB, index.snapshot, blockHash)
 }
 
 //

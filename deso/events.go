@@ -424,17 +424,9 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	// don't have a snapshot. We output extra metadata for this block to ensure
 	// Rosetta connects it appropriately.
 
-	// Save the UTXOOps. These are used to compute all of the meta information
-	// that Rosetta needs.
-	err := node.Index.PutUtxoOps(event.Block, event.UtxoOps)
-	if err != nil {
-		glog.Errorf("PutSpentUtxos: %v", err)
-	}
-
 	// Save a balance snapshot
 	balances := event.UtxoView.PublicKeyToDeSoBalanceNanos
-	err = node.Index.PutBalanceSnapshot(event.Block.Header.Height, DESOBalance, balances)
-	if err != nil {
+	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, DESOBalance, balances); err != nil {
 		glog.Errorf("PutBalanceSnapshot: %v", err)
 	}
 
@@ -461,8 +453,8 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		lockedBalances[*lib.NewPublicKey(profile.PublicKey)] = balanceToPut
 	}
 
-	err = node.Index.PutBalanceSnapshot(event.Block.Header.Height, CreatorCoinLockedBalance, lockedBalances)
-	if err != nil {
+	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, CreatorCoinLockedBalance,
+		lockedBalances); err != nil {
 		glog.Errorf("PutLockedBalanceSnapshot: %v", err)
 	}
 
@@ -480,8 +472,8 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		}
 		validatorEntryBalances[*lib.NewPublicKey(validator.ValidatorPKID.ToBytes())] = balanceToPut
 	}
-	err = node.Index.PutBalanceSnapshot(event.Block.Header.Height, ValidatorStakedDESOBalance, validatorEntryBalances)
-	if err != nil {
+	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, ValidatorStakedDESOBalance, validatorEntryBalances
+	); err != nil {
 		glog.Errorf("PutStakedBalanceSnapshot: %v", err)
 	}
 
@@ -504,8 +496,8 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		}] = balanceToPut
 	}
 
-	err = node.Index.PutLockedStakeBalanceSnapshot(event.Block.Header.Height, LockedStakeDESOBalance, lockedStakeEntryBalances)
-	if err != nil {
+	if err := node.Index.PutLockedStakeBalanceSnapshot(event.Block.Header.Height, LockedStakeDESOBalance,
+		lockedStakeEntryBalances); err != nil {
 		glog.Errorf("PutLockedStakeBalanceSnapshot: %v", err)
 	}
 
