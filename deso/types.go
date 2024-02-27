@@ -20,11 +20,11 @@ const (
 	CreatorCoin = "CREATOR_COIN"
 
 	// ValidatorEntry is the SubAccount address prefix for a
-	// public key's total DESO staked to a given validator entry.
+	// PKID's total DESO staked to a given validator entry.
 	ValidatorEntry = "VALIDATOR_ENTRY"
 
 	// LockedStakeEntry is the SubAccount address prefix for
-	// a public key's total DESO locked in a given locked
+	// a PKID's total DESO locked in a given locked
 	// stake entry.
 	LockedStakeEntry = "LOCKED_STAKE_ENTRY"
 )

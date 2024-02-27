@@ -138,7 +138,10 @@ func balanceSnapshotKey(balanceType BalanceType, publicKey *lib.PublicKey, block
 	return prefix
 }
 
-func lockedStakeBalanceSnapshotKey(balanceType BalanceType, stakerPKID *lib.PKID, validatorPKID *lib.PKID, lockedAtEpochNumber uint64, blockHeight uint64, balance uint64) []byte {
+func lockedStakeBalanceSnapshotKey(
+	balanceType BalanceType, stakerPKID *lib.PKID, validatorPKID *lib.PKID, lockedAtEpochNumber uint64,
+	blockHeight uint64, balance uint64,
+) []byte {
 	prefix := append([]byte{}, balanceType.BalanceTypePrefix())
 	prefix = append(prefix, stakerPKID[:]...)
 	prefix = append(prefix, validatorPKID[:]...)
@@ -170,8 +173,10 @@ func hypersyncHeightToBlockKey(blockHeight uint64, balanceType BalanceType) []by
 	return prefix
 }
 
-func (index *RosettaIndex) PutHypersyncBlockBalances(blockHeight uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) {
-	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance && balanceType != ValidatorStakedDESOBalance {
+func (index *RosettaIndex) PutHypersyncBlockBalances(
+	blockHeight uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) {
+	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
+		balanceType != ValidatorStakedDESOBalance {
 		glog.Error("PutHypersyncBlockBalances: Invalid balance type passed in")
 		return
 	}
@@ -187,7 +192,8 @@ func (index *RosettaIndex) PutHypersyncBlockBalances(blockHeight uint64, balance
 	}
 }
 
-func (index *RosettaIndex) PutHypersyncBlockLockedStakeBalances(blockHeight uint64, stakeEntries map[LockedStakeBalanceMapKey]uint64, balanceType BalanceType) {
+func (index *RosettaIndex) PutHypersyncBlockLockedStakeBalances(
+	blockHeight uint64, stakeEntries map[LockedStakeBalanceMapKey]uint64, balanceType BalanceType) {
 	if balanceType != LockedStakeDESOBalance {
 		glog.Error("PutHypersyncBlockLockedStakeBalances: Invalid balance type passed in")
 		return
@@ -245,7 +251,8 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 		if err != nil {
 			return err
 		}
-		if err = gob.NewDecoder(bytes.NewReader(validatorStakedBalancesBytes)).Decode(&validatorStakedDESOBalances); err != nil {
+		if err = gob.NewDecoder(bytes.NewReader(validatorStakedBalancesBytes)).
+			Decode(&validatorStakedDESOBalances); err != nil {
 			return err
 		}
 		lockedStakedItemBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, LockedStakeDESOBalance))
@@ -256,7 +263,8 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 		if err != nil {
 			return err
 		}
-		if err = gob.NewDecoder(bytes.NewReader(lockedStakedBalancesBytes)).Decode(&lockedStakeDESOBalances); err != nil {
+		if err = gob.NewDecoder(bytes.NewReader(lockedStakedBalancesBytes)).
+			Decode(&lockedStakeDESOBalances); err != nil {
 			return err
 		}
 		return nil
@@ -271,7 +279,8 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 
 func (index *RosettaIndex) PutBalanceSnapshot(
 	height uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) error {
-	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance && balanceType != ValidatorStakedDESOBalance {
+	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
+		balanceType != ValidatorStakedDESOBalance {
 		return errors.New("PutBalanceSnapshot: Invalid balance type passed in")
 	}
 	return index.db.Update(func(txn *badger.Txn) error {
@@ -281,7 +290,8 @@ func (index *RosettaIndex) PutBalanceSnapshot(
 
 func (index *RosettaIndex) PutBalanceSnapshotWithTxn(
 	txn *badger.Txn, height uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) error {
-	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance && balanceType != ValidatorStakedDESOBalance {
+	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
+		balanceType != ValidatorStakedDESOBalance {
 		return errors.New("PutBalanceSnapshotWithTxn: Invalid balance type passed in")
 	}
 	for pk, bal := range balances {
@@ -295,7 +305,8 @@ func (index *RosettaIndex) PutBalanceSnapshotWithTxn(
 
 func (index *RosettaIndex) PutSingleBalanceSnapshotWithTxn(
 	txn *badger.Txn, height uint64, balanceType BalanceType, publicKey lib.PublicKey, balance uint64) error {
-	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance && balanceType != ValidatorStakedDESOBalance {
+	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
+		balanceType != ValidatorStakedDESOBalance {
 		return errors.New("PutSingleBalanceSnapshotWithTxn: Invalid balance type passed in")
 	}
 	if err := txn.Set(balanceSnapshotKey(balanceType, &publicKey, height, balance), []byte{}); err != nil {
@@ -322,7 +333,8 @@ func (index *RosettaIndex) PutLockedStakeBalanceSnapshotWithTxn(
 	}
 	for pk, bal := range balances {
 		if err := txn.Set(lockedStakeBalanceSnapshotKey(
-			balanceType, &pk.StakerPKID, &pk.ValidatorPKID, pk.LockedAtEpochNumber, height, bal), []byte{}); err != nil {
+			balanceType, &pk.StakerPKID, &pk.ValidatorPKID, pk.LockedAtEpochNumber, height, bal), []byte{},
+		); err != nil {
 			return errors.Wrapf(err, "Error in PutLockedStakeBalanceSnapshotWithTxn for block height: "+
 				"%v pub key: %v balance: %v", height, pk, bal)
 		}
@@ -346,7 +358,8 @@ func (index *RosettaIndex) PutSingleLockedStakeBalanceSnapshotWithTxn(
 
 func GetBalanceForPublicKeyAtBlockHeightWithTxn(
 	txn *badger.Txn, balanceType BalanceType, publicKey *lib.PublicKey, blockHeight uint64) uint64 {
-	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance && balanceType != ValidatorStakedDESOBalance {
+	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
+		balanceType != ValidatorStakedDESOBalance {
 		glog.Errorf("GetBalanceForPublicKeyAtBlockHeightWithTxn: Invalid balance type passed in")
 		return 0
 	}
@@ -387,8 +400,11 @@ func GetBalanceForPublicKeyAtBlockHeightWithTxn(
 	return lib.DecodeUint64(keyFound[1+len(publicKey)+len(lib.EncodeUint64(blockHeight)):])
 }
 
-func (index *RosettaIndex) GetBalanceSnapshot(balanceType BalanceType, publicKey *lib.PublicKey, blockHeight uint64) uint64 {
-	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance && balanceType != ValidatorStakedDESOBalance {
+func (index *RosettaIndex) GetBalanceSnapshot(
+	balanceType BalanceType, publicKey *lib.PublicKey, blockHeight uint64,
+) uint64 {
+	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
+		balanceType != ValidatorStakedDESOBalance {
 		glog.Errorf("GetBalanceSnapshot: Invalid balance type passed in")
 		return 0
 	}
@@ -402,7 +418,10 @@ func (index *RosettaIndex) GetBalanceSnapshot(balanceType BalanceType, publicKey
 	return balanceFound
 }
 
-func GetLockedStakeBalanceForPublicKeyAtBlockHeightWithTxn(txn *badger.Txn, balanceType BalanceType, stakerPKID *lib.PKID, validatorPKID *lib.PKID, lockedAtEpochNumber uint64, blockHeight uint64) uint64 {
+func GetLockedStakeBalanceForPublicKeyAtBlockHeightWithTxn(
+	txn *badger.Txn, balanceType BalanceType, stakerPKID *lib.PKID, validatorPKID *lib.PKID, lockedAtEpochNumber uint64,
+	blockHeight uint64,
+) uint64 {
 	if balanceType != LockedStakeDESOBalance {
 		glog.Errorf("GetLockedStakeBalanceForPublicKeyAtBlockHeightWithTxn: Invalid balance type passed in")
 		return 0
@@ -419,7 +438,8 @@ func GetLockedStakeBalanceForPublicKeyAtBlockHeightWithTxn(txn *badger.Txn, bala
 	// Since we iterate backwards, the prefix must be bigger than all possible
 	// values that could actually exist. This means the key we use the pubkey
 	// and block height with max balance.
-	maxPrefix := lockedStakeBalanceSnapshotKey(balanceType, stakerPKID, validatorPKID, lockedAtEpochNumber, blockHeight, math.MaxUint64)
+	maxPrefix := lockedStakeBalanceSnapshotKey(
+		balanceType, stakerPKID, validatorPKID, lockedAtEpochNumber, blockHeight, math.MaxUint64)
 	// We don't want to consider any keys that don't involve our public key. This
 	// will cause the iteration to stop if we don't have any values for our current
 	// public key.
@@ -444,14 +464,18 @@ func GetLockedStakeBalanceForPublicKeyAtBlockHeightWithTxn(txn *badger.Txn, bala
 	return lib.DecodeUint64(keyFound[1+len(stakerPKID.ToBytes())+len(lib.EncodeUint64(blockHeight)):])
 }
 
-func (index *RosettaIndex) GetLockedStakeBalanceSnapshot(balanceType BalanceType, stakerPKID *lib.PKID, validatorPKID *lib.PKID, lockedAtEpochNumber uint64, blockHeight uint64) uint64 {
+func (index *RosettaIndex) GetLockedStakeBalanceSnapshot(
+	balanceType BalanceType, stakerPKID *lib.PKID, validatorPKID *lib.PKID, lockedAtEpochNumber uint64,
+	blockHeight uint64,
+) uint64 {
 	if balanceType != LockedStakeDESOBalance {
 		glog.Errorf("GetLockedStakeBalanceSnapshot: Invalid balance type passed in")
 		return 0
 	}
 	balanceFound := uint64(0)
 	index.db.View(func(txn *badger.Txn) error {
-		balanceFound = GetLockedStakeBalanceForPublicKeyAtBlockHeightWithTxn(txn, balanceType, stakerPKID, validatorPKID, lockedAtEpochNumber, blockHeight)
+		balanceFound = GetLockedStakeBalanceForPublicKeyAtBlockHeightWithTxn(
+			txn, balanceType, stakerPKID, validatorPKID, lockedAtEpochNumber, blockHeight)
 		return nil
 	})
 
