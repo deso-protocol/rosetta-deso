@@ -9,6 +9,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"math"
+	"time"
 )
 
 type LockedStakeBalanceMapKey struct {
@@ -25,7 +26,10 @@ func (node *Node) handleSnapshotCompleted() {
 	snapshot := node.Server.GetBlockchain().Snapshot()
 	if snapshot != nil &&
 		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
-
+		glog.Infof("handleSnapshotCompleted: handling snapshot with first snapshot block height %d "+
+			"and snapshot block height of %d",
+			snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
+			snapshot.CurrentEpochSnapshotMetadata.SnapshotBlockHeight)
 		// If we're at exactly the snapshot height then we've got some work to do.
 		// Output every single balance in the db to a special index. This will
 		// bootstrap Rosetta, and allow us to pass check:data. This is because we
@@ -40,67 +44,94 @@ func (node *Node) handleSnapshotCompleted() {
 		// the snapshot height rather than the true genesis. This allows us to pass
 		// check:data without introducing complications for Coinbase.
 		snapshotBlockHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
+		writeBatchSize := uint64(1000)
+		statusLoggingInterval := uint64(1000)
 		{
 			// Iterate through every single public key and put a balance snapshot down
 			// for it for this block. We don't need to worry about ancestral records here
 			// because we haven't generated any yet.
+			wb := node.Index.db.NewWriteBatch()
+			defer wb.Cancel()
+			err := node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
+				opts := badger.DefaultIteratorOptions
+				//// We don't prefetch values when iterating over the keys.
+				//opts.PrefetchValues = false
+				// Set prefix on iterator options
+				opts.Prefix = lib.Prefixes.PrefixPublicKeyToDeSoBalanceNanos
+				nodeIterator := chainTxn.NewIterator(opts)
+				defer nodeIterator.Close()
+				prefix := lib.Prefixes.PrefixPublicKeyToDeSoBalanceNanos
 
-			err := node.Index.db.Update(func(indexTxn *badger.Txn) error {
-				return node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
-					opts := badger.DefaultIteratorOptions
-					nodeIterator := chainTxn.NewIterator(opts)
-					defer nodeIterator.Close()
-					prefix := lib.Prefixes.PrefixPublicKeyToDeSoBalanceNanos
+				// Partition the balances across the blocks before the snapshot block height.
+				totalCount := uint64(0)
+				startTime := time.Now()
+				for nodeIterator.Seek(prefix); nodeIterator.ValidForPrefix(prefix); nodeIterator.Next() {
+					totalCount++
+				}
+				glog.Infof("handleSnapshotCompleted: Counting public keys took: %v", time.Since(startTime))
+				currentBlockHeight := uint64(1)
+				// We'll force a ceiling on this because otherwise the last block could amass O(snapshotBlockHeight) balances
+				balancesPerBlock := totalCount / snapshotBlockHeight
+				balancesMap := make(map[lib.PublicKey]uint64)
+				if totalCount < snapshotBlockHeight {
+					balancesPerBlock = 1
+				}
+				currentCounter := uint64(0)
+				currentTime := time.Now()
+				//// Create a new node iterator w/ prefetch values set to true.
+				//opts.PrefetchValues = true
+				//nodeIterator = chainTxn.NewIterator(opts)
+				for nodeIterator.Seek(prefix); nodeIterator.ValidForPrefix(prefix); nodeIterator.Next() {
+					key := nodeIterator.Item().Key()
+					keyCopy := make([]byte, len(key))
+					copy(keyCopy[:], key[:])
 
-					// Partition the balances across the blocks before the snapshot block height.
-					totalCount := uint64(0)
-					for nodeIterator.Seek(prefix); nodeIterator.ValidForPrefix(prefix); nodeIterator.Next() {
-						totalCount++
+					valCopy, err := nodeIterator.Item().ValueCopy(nil)
+					if err != nil {
+						return errors.Wrapf(err, "Problem iterating over chain database, "+
+							"on key (%v) and value (%v)", keyCopy, valCopy)
 					}
-					currentBlockHeight := uint64(1)
-					// We'll force a ceiling on this because otherwise the last block could amass O(snapshotBlockHeight) balances
-					balancesPerBlock := totalCount / snapshotBlockHeight
-					balancesMap := make(map[lib.PublicKey]uint64)
-					if totalCount < snapshotBlockHeight {
-						balancesPerBlock = 1
+
+					balance := lib.DecodeUint64(valCopy)
+					pubKey := lib.NewPublicKey(key[1:])
+					balancesMap[*pubKey] = balance
+
+					if err := node.Index.PutSingleBalanceSnapshotWithWB(
+						wb, currentBlockHeight, DESOBalance, *pubKey, balance); err != nil {
+						return errors.Wrapf(err, "Problem updating balance snapshot in index, "+
+							"on key (%v), value (%v), and height (%v)", keyCopy, valCopy,
+							snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
 					}
-					currentCounter := uint64(0)
 
-					for nodeIterator.Seek(prefix); nodeIterator.ValidForPrefix(prefix); nodeIterator.Next() {
-						key := nodeIterator.Item().Key()
-						keyCopy := make([]byte, len(key))
-						copy(keyCopy[:], key[:])
-
-						valCopy, err := nodeIterator.Item().ValueCopy(nil)
-						if err != nil {
-							return errors.Wrapf(err, "Problem iterating over chain database, "+
-								"on key (%v) and value (%v)", keyCopy, valCopy)
+					currentCounter += 1
+					if currentCounter%statusLoggingInterval == 0 {
+						glog.Infof("handleSnapshotCompleted: Processed %d of %d balances in %v. %d%% complete",
+							currentCounter, totalCount, time.Since(currentTime), (100*currentCounter)/totalCount)
+						currentTime = time.Now()
+					}
+					if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
+						node.Index.PutHypersyncBlockBalancesWithWB(wb, currentBlockHeight, DESOBalance, balancesMap)
+						balancesMap = make(map[lib.PublicKey]uint64)
+						currentBlockHeight++
+						currentCounter = 0
+						if currentBlockHeight%writeBatchSize == 0 {
+							flushTime := time.Now()
+							if err = wb.Flush(); err != nil {
+								return errors.Wrapf(err, "Problem flushing write batch")
+							}
+							glog.Infof("handleSnapshotCompleted: Flush took: %v", time.Since(flushTime))
 						}
-
-						balance := lib.DecodeUint64(valCopy)
-						pubKey := lib.NewPublicKey(key[1:])
-						balancesMap[*pubKey] = balance
-
-						if err := node.Index.PutSingleBalanceSnapshotWithTxn(
-							indexTxn, currentBlockHeight, DESOBalance, *pubKey, balance); err != nil {
-							return errors.Wrapf(err, "Problem updating balance snapshot in index, "+
-								"on key (%v), value (%v), and height (%v)", keyCopy, valCopy,
-								snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
-						}
-
-						currentCounter += 1
-						if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
-							node.Index.PutHypersyncBlockBalances(currentBlockHeight, DESOBalance, balancesMap)
-							balancesMap = make(map[lib.PublicKey]uint64)
-							currentBlockHeight++
-							currentCounter = 0
-						}
 					}
-					if currentCounter > 0 {
-						node.Index.PutHypersyncBlockBalances(currentBlockHeight, DESOBalance, balancesMap)
+				}
+				if currentCounter > 0 {
+					node.Index.PutHypersyncBlockBalancesWithWB(wb, currentBlockHeight, DESOBalance, balancesMap)
+					flushTime := time.Now()
+					if err := wb.Flush(); err != nil {
+						return errors.Wrapf(err, "Problem flushing write batch")
 					}
-					return nil
-				})
+					glog.Infof("handleSnapshotCompleted: Flush took: %v", time.Since(flushTime))
+				}
+				return nil
 			})
 			if err != nil {
 				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: error: (%v)", err)))
@@ -117,87 +148,110 @@ func (node *Node) handleSnapshotCompleted() {
 			//
 			// TODO: Do we need to do anything special for SwapIdentity? See below for
 			// some tricky logic there.
+			wb := node.Index.db.NewWriteBatch()
+			defer wb.Cancel()
+			// This is pretty much the same as lib.DBGetAllProfilesByCoinValue but we don't load all entries into memory.
+			err := node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
+				dbPrefixx := append([]byte{}, lib.Prefixes.PrefixCreatorDeSoLockedNanosCreatorPKID...)
+				opts := badger.DefaultIteratorOptions
+				opts.PrefetchValues = false
+				// Go in reverse order since a larger count is better.
+				opts.Reverse = true
 
-			err := node.Index.db.Update(func(indexTxn *badger.Txn) error {
-				// This is pretty much the same as lib.DBGetAllProfilesByCoinValue but we don't load all entries into memory.
-				return node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
-					dbPrefixx := append([]byte{}, lib.Prefixes.PrefixCreatorDeSoLockedNanosCreatorPKID...)
-					opts := badger.DefaultIteratorOptions
-					opts.PrefetchValues = false
-					// Go in reverse order since a larger count is better.
-					opts.Reverse = true
+				// Set the prefix on the iterator options
+				opts.Prefix = dbPrefixx
 
-					it := chainTxn.NewIterator(opts)
-					defer it.Close()
+				it := chainTxn.NewIterator(opts)
+				defer it.Close()
 
-					totalCount := uint64(0)
-					for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
-						totalCount++
+				totalCount := uint64(0)
+				startTime := time.Now()
+				for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
+					totalCount++
+				}
+				glog.Infof("handleSnapshotCompleted: Counting CC locked balance public keys took: %v", time.Since(startTime))
+				currentBlockHeight := uint64(1)
+				balancesPerBlock := totalCount / snapshotBlockHeight
+				balancesMap := make(map[lib.PublicKey]uint64)
+				if totalCount < snapshotBlockHeight {
+					balancesPerBlock = 1
+				}
+				currentCounter := uint64(0)
+				currentTime := time.Now()
+				// Since we iterate backwards, the prefix must be bigger than all possible
+				// counts that could actually exist. We use eight bytes since the count is
+				// encoded as a 64-bit big-endian byte slice, which will be eight bytes long.
+				maxBigEndianUint64Bytes := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+				prefix := append(dbPrefixx, maxBigEndianUint64Bytes...)
+				for it.Seek(prefix); it.ValidForPrefix(dbPrefixx); it.Next() {
+					rawKey := it.Item().Key()
+
+					// Strip the prefix off the key and check its length. If it contains
+					// a big-endian uint64 then it should be at least eight bytes.
+					lockedDeSoPubKeyConcatKey := rawKey[1:]
+					uint64BytesLen := len(maxBigEndianUint64Bytes)
+					expectedLength := uint64BytesLen + btcec.PubKeyBytesLenCompressed
+					if len(lockedDeSoPubKeyConcatKey) != expectedLength {
+						return fmt.Errorf("Invalid key length %d should be at least %d",
+							len(lockedDeSoPubKeyConcatKey), expectedLength)
 					}
-					currentBlockHeight := uint64(1)
-					balancesPerBlock := totalCount / snapshotBlockHeight
-					balancesMap := make(map[lib.PublicKey]uint64)
-					if totalCount < snapshotBlockHeight {
-						balancesPerBlock = 1
+
+					lockedDeSoNanos := lib.DecodeUint64(lockedDeSoPubKeyConcatKey[:uint64BytesLen])
+
+					// Appended to the stake should be the profile pub key so extract it here.
+					profilePKIDbytes := make([]byte, btcec.PubKeyBytesLenCompressed)
+					copy(profilePKIDbytes[:], lockedDeSoPubKeyConcatKey[uint64BytesLen:])
+					profilePKID := lib.PublicKeyToPKID(profilePKIDbytes)
+
+					pkBytes := lib.DBGetPublicKeyForPKIDWithTxn(chainTxn, nil, profilePKID)
+					if pkBytes == nil {
+						return fmt.Errorf("DBGetPublicKeyForPKIDWithTxn: Nil pkBytes for pkid %v",
+							lib.PkToStringMainnet(profilePKID[:]))
 					}
-					currentCounter := uint64(0)
+					pubKey := *lib.NewPublicKey(pkBytes)
+					balancesMap[pubKey] = lockedDeSoNanos
 
-					// Since we iterate backwards, the prefix must be bigger than all possible
-					// counts that could actually exist. We use eight bytes since the count is
-					// encoded as a 64-bit big-endian byte slice, which will be eight bytes long.
-					maxBigEndianUint64Bytes := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-					prefix := append(dbPrefixx, maxBigEndianUint64Bytes...)
-					for it.Seek(prefix); it.ValidForPrefix(dbPrefixx); it.Next() {
-						rawKey := it.Item().Key()
+					// We have to also put the balances in the other index. Not doing this would cause
+					// balances to return zero when we're PAST the first snapshot block height.
+					if err := node.Index.PutSingleBalanceSnapshotWithWB(
+						wb, currentBlockHeight, CreatorCoinLockedBalance, pubKey, lockedDeSoNanos); err != nil {
 
-						// Strip the prefix off the key and check its length. If it contains
-						// a big-endian uint64 then it should be at least eight bytes.
-						lockedDeSoPubKeyConcatKey := rawKey[1:]
-						uint64BytesLen := len(maxBigEndianUint64Bytes)
-						expectedLength := uint64BytesLen + btcec.PubKeyBytesLenCompressed
-						if len(lockedDeSoPubKeyConcatKey) != expectedLength {
-							return fmt.Errorf("Invalid key length %d should be at least %d",
-								len(lockedDeSoPubKeyConcatKey), expectedLength)
-						}
+						return errors.Wrapf(err, "PutSingleBalanceSnapshotWithWB: problem with "+
+							"pubkey (%v), lockedDeSoNanos (%v) and firstSnapshotHeight (%v)",
+							pubKey, lockedDeSoNanos, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
+					}
 
-						lockedDeSoNanos := lib.DecodeUint64(lockedDeSoPubKeyConcatKey[:uint64BytesLen])
-
-						// Appended to the stake should be the profile pub key so extract it here.
-						profilePKIDbytes := make([]byte, btcec.PubKeyBytesLenCompressed)
-						copy(profilePKIDbytes[:], lockedDeSoPubKeyConcatKey[uint64BytesLen:])
-						profilePKID := lib.PublicKeyToPKID(profilePKIDbytes)
-
-						pkBytes := lib.DBGetPublicKeyForPKIDWithTxn(chainTxn, nil, profilePKID)
-						if pkBytes == nil {
-							return fmt.Errorf("DBGetPublicKeyForPKIDWithTxn: Nil pkBytes for pkid %v",
-								lib.PkToStringMainnet(profilePKID[:]))
-						}
-						pubKey := *lib.NewPublicKey(pkBytes)
-						balancesMap[pubKey] = lockedDeSoNanos
-
-						// We have to also put the balances in the other index. Not doing this would cause
-						// balances to return zero when we're PAST the first snapshot block height.
-						if err := node.Index.PutSingleBalanceSnapshotWithTxn(
-							indexTxn, currentBlockHeight, CreatorCoinLockedBalance, pubKey, lockedDeSoNanos); err != nil {
-
-							return errors.Wrapf(err, "PutSingleBalanceSnapshotWithTxn: problem with "+
-								"pubkey (%v), lockedDeSoNanos (%v) and firstSnapshotHeight (%v)",
-								pubKey, lockedDeSoNanos, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
-						}
-
-						currentCounter += 1
-						if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
-							node.Index.PutHypersyncBlockBalances(currentBlockHeight, CreatorCoinLockedBalance, balancesMap)
-							balancesMap = make(map[lib.PublicKey]uint64)
-							currentBlockHeight++
-							currentCounter = 0
+					currentCounter += 1
+					if currentCounter%statusLoggingInterval == 0 {
+						glog.Infof("handleSnapshotCompleted: Processed %d of %d locked creator coin balances in %v. %d%% complete",
+							currentCounter, totalCount, time.Since(currentTime), (100*currentCounter)/totalCount)
+						currentTime = time.Now()
+					}
+					if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
+						node.Index.PutHypersyncBlockBalancesWithWB(
+							wb, currentBlockHeight, CreatorCoinLockedBalance, balancesMap)
+						balancesMap = make(map[lib.PublicKey]uint64)
+						currentBlockHeight++
+						currentCounter = 0
+						if currentBlockHeight%writeBatchSize == 0 {
+							flushTime := time.Now()
+							if err := wb.Flush(); err != nil {
+								return errors.Wrapf(err, "Problem flushing write batch")
+							}
+							glog.Infof("handleSnapshotCompleted: CC Locked balance Flush took: %v", time.Since(flushTime))
 						}
 					}
-					if currentCounter > 0 {
-						node.Index.PutHypersyncBlockBalances(currentBlockHeight, CreatorCoinLockedBalance, balancesMap)
+				}
+				if currentCounter > 0 {
+					node.Index.PutHypersyncBlockBalancesWithWB(
+						wb, currentBlockHeight, CreatorCoinLockedBalance, balancesMap)
+					flushTime := time.Now()
+					if err := wb.Flush(); err != nil {
+						return errors.Wrapf(err, "Problem flushing write batch")
 					}
-					return nil
-				})
+					glog.Infof("handleSnapshotCompleted: CC Locked balance Flush took: %v", time.Since(flushTime))
+				}
+				return nil
 			})
 			if err != nil {
 				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: Problem iterating locked "+
@@ -212,91 +266,115 @@ func (node *Node) handleSnapshotCompleted() {
 			//
 			// No need to pass the snapshot because we know we don't have any ancestral
 			// records yet.
+			wb := node.Index.db.NewWriteBatch()
+			defer wb.Cancel()
+			// TODO: check all these comments.
+			err := node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
+				dbPrefixx := append([]byte{}, lib.Prefixes.PrefixValidatorByStatusAndStakeAmount...)
+				opts := badger.DefaultIteratorOptions
+				opts.PrefetchValues = false
+				// Go in reverse order since a larger count is better.
+				opts.Reverse = true
 
-			err := node.Index.db.Update(func(indexTxn *badger.Txn) error {
-				// TODO: check all these comments.
-				return node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
-					dbPrefixx := append([]byte{}, lib.Prefixes.PrefixValidatorByStatusAndStakeAmount...)
-					opts := badger.DefaultIteratorOptions
-					opts.PrefetchValues = false
-					// Go in reverse order since a larger count is better.
-					opts.Reverse = true
+				// Set prefix on iterator
+				opts.Prefix = dbPrefixx
 
-					it := chainTxn.NewIterator(opts)
-					defer it.Close()
+				it := chainTxn.NewIterator(opts)
+				defer it.Close()
 
-					totalCount := uint64(0)
-					// TODO: I really hate how we iterate over the index twice
-					// for each balance type. We can do better.
-					for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
-						totalCount++
+				totalCount := uint64(0)
+				startTime := time.Now()
+				// TODO: I really hate how we iterate over the index twice
+				// for each balance type. We can do better.
+				for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
+					totalCount++
+				}
+				glog.Infof("handleSnapshotCompleted: Counting validator entries took: %v", time.Since(startTime))
+				currentBlockHeight := uint64(1)
+				balancesPerBlock := totalCount / snapshotBlockHeight
+				validatorEntryBalances := make(map[lib.PublicKey]uint64)
+				if totalCount < snapshotBlockHeight {
+					balancesPerBlock = 1
+				}
+				currentCounter := uint64(0)
+				currentTime := time.Now()
+				// The key for the validator by status and stake amount looks like
+				// this: Prefix, <Status uint8>, <TotalStakeAmountNanos *uint256.Int>, <ValidatorPKID [33]byte> -> nil
+				// So we need to chop off the status to pull out the total stake amount nanos and the validator PKID
+				maxUint256 := lib.FixedWidthEncodeUint256(lib.MaxUint256)
+				prefix := append(dbPrefixx, lib.EncodeUint8(math.MaxUint8)...)
+				prefix = append(prefix, maxUint256...)
+				for it.Seek(prefix); it.ValidForPrefix(dbPrefixx); it.Next() {
+					rawKey := it.Item().Key()
+
+					// Strip the prefix and status off the key and check its length. It
+					// should contain a uint256 followed by a validator PKID.
+					totalStakeAmountAndValidatorPKIDKey := rawKey[2:]
+					expectedLength := len(maxUint256) + btcec.PubKeyBytesLenCompressed
+					if len(totalStakeAmountAndValidatorPKIDKey) != expectedLength {
+						return fmt.Errorf("invalid key length %d should be at least %d",
+							len(totalStakeAmountAndValidatorPKIDKey), expectedLength)
 					}
-					currentBlockHeight := uint64(1)
-					balancesPerBlock := totalCount / snapshotBlockHeight
-					validatorEntryBalances := make(map[lib.PublicKey]uint64)
-					if totalCount < snapshotBlockHeight {
-						balancesPerBlock = 1
+					rr := bytes.NewReader(totalStakeAmountAndValidatorPKIDKey)
+					totalStakeAmountNanos, err := lib.FixedWidthDecodeUint256(rr)
+					if err != nil {
+						return fmt.Errorf("problem decoding stake amount: %v", err)
 					}
-					currentCounter := uint64(0)
+					if !totalStakeAmountNanos.IsUint64() {
+						return fmt.Errorf("FixedWidthDecodeUint256: Stake amount is not a uint64")
+					}
+					validatorPKIDBytes := make([]byte, btcec.PubKeyBytesLenCompressed)
+					_, err = rr.Read(validatorPKIDBytes[:])
+					if err != nil {
+						return fmt.Errorf("problem reading validator PKID: %v", err)
+					}
+					// For simplicity, we just interpret the PKID as a public key
+					// so we can reuse existing functions.
+					validatorPubKey := *lib.NewPublicKey(validatorPKIDBytes)
+					validatorEntryBalances[validatorPubKey] = totalStakeAmountNanos.Uint64()
 
-					// The key for the validator by status and stake amount looks like
-					// this: Prefix, <Status uint8>, <TotalStakeAmountNanos *uint256.Int>, <ValidatorPKID [33]byte> -> nil
-					// So we need to chop off the status to pull out the total stake amount nanos and the validator PKID
-					maxUint256 := lib.FixedWidthEncodeUint256(lib.MaxUint256)
-					prefix := append(dbPrefixx, lib.EncodeUint8(math.MaxUint8)...)
-					prefix = append(prefix, maxUint256...)
-					for it.Seek(prefix); it.ValidForPrefix(dbPrefixx); it.Next() {
-						rawKey := it.Item().Key()
+					// We have to also put the balances in the other index. Not doing this would cause
+					// balances to return zero when we're PAST the first snapshot block height.
+					if err = node.Index.PutSingleBalanceSnapshotWithWB(
+						wb, currentBlockHeight, ValidatorStakedDESOBalance, validatorPubKey,
+						totalStakeAmountNanos.Uint64()); err != nil {
+						return errors.Wrapf(err, "PutSingleBalanceSnapshotWithWB: problem with "+
+							"validatorPubKey (%v), totalStakeAmountNanos (%v) and firstSnapshotHeight (%v)",
+							validatorPubKey, totalStakeAmountNanos,
+							snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
+					}
 
-						// Strip the prefix and status off the key and check its length. It
-						// should contain a uint256 followed by a validator PKID.
-						totalStakeAmountAndValidatorPKIDKey := rawKey[2:]
-						expectedLength := len(maxUint256) + btcec.PubKeyBytesLenCompressed
-						if len(totalStakeAmountAndValidatorPKIDKey) != expectedLength {
-							return fmt.Errorf("invalid key length %d should be at least %d",
-								len(totalStakeAmountAndValidatorPKIDKey), expectedLength)
-						}
-						rr := bytes.NewReader(totalStakeAmountAndValidatorPKIDKey)
-						totalStakeAmountNanos, err := lib.FixedWidthDecodeUint256(rr)
-						if err != nil {
-							return fmt.Errorf("problem decoding stake amount: %v", err)
-						}
-						if !totalStakeAmountNanos.IsUint64() {
-							return fmt.Errorf("FixedWidthDecodeUint256: Stake amount is not a uint64")
-						}
-						validatorPKIDBytes := make([]byte, btcec.PubKeyBytesLenCompressed)
-						_, err = rr.Read(validatorPKIDBytes[:])
-						if err != nil {
-							return fmt.Errorf("problem reading validator PKID: %v", err)
-						}
-						// For simplicity, we just interpret the PKID as a public key
-						// so we can reuse existing functions.
-						validatorPubKey := *lib.NewPublicKey(validatorPKIDBytes)
-						validatorEntryBalances[validatorPubKey] = totalStakeAmountNanos.Uint64()
-
-						// We have to also put the balances in the other index. Not doing this would cause
-						// balances to return zero when we're PAST the first snapshot block height.
-						if err = node.Index.PutSingleBalanceSnapshotWithTxn(
-							indexTxn, currentBlockHeight, ValidatorStakedDESOBalance, validatorPubKey,
-							totalStakeAmountNanos.Uint64()); err != nil {
-							return errors.Wrapf(err, "PutSingleBalanceSnapshotWithTxn: problem with "+
-								"validatorPubKey (%v), totalStakeAmountNanos (%v) and firstSnapshotHeight (%v)",
-								validatorPubKey, totalStakeAmountNanos, snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
-						}
-
-						currentCounter++
-						if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
-							node.Index.PutHypersyncBlockBalances(currentBlockHeight, ValidatorStakedDESOBalance, validatorEntryBalances)
-							validatorEntryBalances = make(map[lib.PublicKey]uint64)
-							currentBlockHeight++
-							currentCounter = 0
+					currentCounter++
+					if currentCounter%statusLoggingInterval == 0 {
+						glog.Infof("handleSnapshotCompleted: Processed %d of %d validator staked balances in %v. %d%% complete",
+							currentCounter, totalCount, time.Since(currentTime), (100*currentCounter)/totalCount)
+						currentTime = time.Now()
+					}
+					if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
+						node.Index.PutHypersyncBlockBalancesWithWB(
+							wb, currentBlockHeight, ValidatorStakedDESOBalance, validatorEntryBalances)
+						validatorEntryBalances = make(map[lib.PublicKey]uint64)
+						currentBlockHeight++
+						currentCounter = 0
+						if currentBlockHeight%writeBatchSize == 0 {
+							flushTime := time.Now()
+							if err = wb.Flush(); err != nil {
+								return errors.Wrapf(err, "Problem flushing write batch")
+							}
+							glog.Infof("handleSnapshotCompleted: Validator staked balance Flush took: %v", time.Since(flushTime))
 						}
 					}
-					if currentCounter > 0 {
-						node.Index.PutHypersyncBlockBalances(currentBlockHeight, ValidatorStakedDESOBalance, validatorEntryBalances)
+				}
+				if currentCounter > 0 {
+					node.Index.PutHypersyncBlockBalancesWithWB(
+						wb, currentBlockHeight, ValidatorStakedDESOBalance, validatorEntryBalances)
+					flushTime := time.Now()
+					if err := wb.Flush(); err != nil {
+						return errors.Wrapf(err, "Problem flushing write batch")
 					}
-					return nil
-				})
+					glog.Infof("handleSnapshotCompleted: Validator staked balance Flush took: %v", time.Since(flushTime))
+				}
+				return nil
 			})
 			if err != nil {
 				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: Problem iterating staked "+
@@ -312,87 +390,109 @@ func (node *Node) handleSnapshotCompleted() {
 			// No need to pass the snapshot because we know we don't have any ancestral
 			// records yet.
 
-			err := node.Index.db.Update(func(indexTxn *badger.Txn) error {
-				// TODO: check all these comments.
-				return node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
-					dbPrefixx := append([]byte{}, lib.Prefixes.PrefixLockedStakeByValidatorAndStakerAndLockedAt...)
-					opts := badger.DefaultIteratorOptions
-					opts.PrefetchValues = true
-					// Go in reverse order since a larger count is better.
-					opts.Reverse = true
+			wb := node.Index.db.NewWriteBatch()
+			// TODO: check all these comments.
+			err := node.GetBlockchain().DB().View(func(chainTxn *badger.Txn) error {
+				dbPrefixx := append([]byte{}, lib.Prefixes.PrefixLockedStakeByValidatorAndStakerAndLockedAt...)
+				opts := badger.DefaultIteratorOptions
+				opts.PrefetchValues = true
+				// Go in reverse order since a larger count is better.
+				opts.Reverse = true
 
-					it := chainTxn.NewIterator(opts)
-					defer it.Close()
+				// Set prefix on iterator
+				opts.Prefix = dbPrefixx
 
-					totalCount := uint64(0)
-					// TODO: I really hate how we iterate over the index twice
-					// for each balance type. We can do better.
-					for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
-						totalCount++
+				it := chainTxn.NewIterator(opts)
+				defer it.Close()
+
+				totalCount := uint64(0)
+				startTime := time.Now()
+				// TODO: I really hate how we iterate over the index twice
+				// for each balance type. We can do better.
+				for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
+					totalCount++
+				}
+				glog.Infof("handleSnapshotCompleted: Counting locked stake entries took: %v", time.Since(startTime))
+				currentBlockHeight := uint64(1)
+				balancesPerBlock := totalCount / snapshotBlockHeight
+				lockedStakerValidatorBalances := make(map[LockedStakeBalanceMapKey]uint64)
+				if totalCount < snapshotBlockHeight {
+					balancesPerBlock = 1
+				}
+				currentCounter := uint64(0)
+				currentTime := time.Now()
+				for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
+					rawValueCopy, err := it.Item().ValueCopy(nil)
+					if err != nil {
+						return errors.Wrapf(err, "Problem iterating over chain database, "+
+							"on key (%v) and value (%v)", it.Item().Key(), rawValueCopy)
 					}
-					currentBlockHeight := uint64(1)
-					balancesPerBlock := totalCount / snapshotBlockHeight
-					lockedStakerValidatorBalances := make(map[LockedStakeBalanceMapKey]uint64)
-					if totalCount < snapshotBlockHeight {
-						balancesPerBlock = 1
+					rr := bytes.NewReader(rawValueCopy)
+					lockedStakeEntry, err := lib.DecodeDeSoEncoder(&lib.LockedStakeEntry{}, rr)
+					if err != nil {
+						return errors.Wrapf(err, "Problem decoding locked stake entry: %v", err)
 					}
-					currentCounter := uint64(0)
-					for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
-						rawValueCopy, err := it.Item().ValueCopy(nil)
-						if err != nil {
-							return errors.Wrapf(err, "Problem iterating over chain database, "+
-								"on key (%v) and value (%v)", it.Item().Key(), rawValueCopy)
-						}
-						rr := bytes.NewReader(rawValueCopy)
-						lockedStakeEntry, err := lib.DecodeDeSoEncoder(&lib.LockedStakeEntry{}, rr)
-						if err != nil {
-							return errors.Wrapf(err, "Problem decoding locked stake entry: %v", err)
-						}
-						if !lockedStakeEntry.LockedAmountNanos.IsUint64() {
-							return fmt.Errorf("LockedAmountNanos is not a uint64")
-						}
-						if !lockedStakeEntry.LockedAmountNanos.IsUint64() {
-							return fmt.Errorf("LockedAtEpochNumber is not a uint64")
-						}
-						lockedStakeAmountNanos := lockedStakeEntry.LockedAmountNanos.Uint64()
-
-						lockedStakerMapKey := LockedStakeBalanceMapKey{
-							StakerPKID:          *lockedStakeEntry.StakerPKID,
-							ValidatorPKID:       *lockedStakeEntry.ValidatorPKID,
-							LockedAtEpochNumber: lockedStakeEntry.LockedAtEpochNumber,
-						}
-						lockedStakerValidatorBalances[lockedStakerMapKey] = lockedStakeAmountNanos
-
-						// We have to also put the balances in the other index. Not doing this would cause
-						// balances to return zero when we're PAST the first snapshot block height. We are
-						// writing to the same key multiple times, but this is okay since we just need the sum
-						// which gets updated each time we write to the map.
-						if err = node.Index.PutSingleLockedStakeBalanceSnapshotWithTxn(
-							indexTxn, currentBlockHeight, LockedStakeDESOBalance, lockedStakeEntry.StakerPKID,
-							lockedStakeEntry.ValidatorPKID, lockedStakeEntry.LockedAtEpochNumber,
-							lockedStakeEntry.LockedAmountNanos.Uint64()); err != nil {
-							return errors.Wrapf(err, "PutSingleBalanceSnapshotWithTxn: problem with "+
-								"stakerPKID (%v), validatorPKID (%v) stakeAmountNanos (%v) and firstSnapshotHeight "+
-								"(%v)", lockedStakeEntry.StakerPKID, lockedStakeEntry.ValidatorPKID,
-								lockedStakeEntry.LockedAmountNanos.Uint64(),
-								snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
-						}
-
-						currentCounter++
-						if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
-							node.Index.PutHypersyncBlockLockedStakeBalances(currentBlockHeight,
-								lockedStakerValidatorBalances, LockedStakeDESOBalance)
-							lockedStakerValidatorBalances = make(map[LockedStakeBalanceMapKey]uint64)
-							currentBlockHeight++
-							currentCounter = 0
-						}
+					if !lockedStakeEntry.LockedAmountNanos.IsUint64() {
+						return fmt.Errorf("LockedAmountNanos is not a uint64")
 					}
-					if currentCounter > 0 {
-						node.Index.PutHypersyncBlockLockedStakeBalances(currentBlockHeight,
+					if !lockedStakeEntry.LockedAmountNanos.IsUint64() {
+						return fmt.Errorf("LockedAtEpochNumber is not a uint64")
+					}
+					lockedStakeAmountNanos := lockedStakeEntry.LockedAmountNanos.Uint64()
+
+					lockedStakerMapKey := LockedStakeBalanceMapKey{
+						StakerPKID:          *lockedStakeEntry.StakerPKID,
+						ValidatorPKID:       *lockedStakeEntry.ValidatorPKID,
+						LockedAtEpochNumber: lockedStakeEntry.LockedAtEpochNumber,
+					}
+					lockedStakerValidatorBalances[lockedStakerMapKey] = lockedStakeAmountNanos
+
+					// We have to also put the balances in the other index. Not doing this would cause
+					// balances to return zero when we're PAST the first snapshot block height. We are
+					// writing to the same key multiple times, but this is okay since we just need the sum
+					// which gets updated each time we write to the map.
+					if err = node.Index.PutSingleLockedStakeBalanceSnapshotWithWB(
+						wb, currentBlockHeight, LockedStakeDESOBalance, lockedStakeEntry.StakerPKID,
+						lockedStakeEntry.ValidatorPKID, lockedStakeEntry.LockedAtEpochNumber,
+						lockedStakeEntry.LockedAmountNanos.Uint64()); err != nil {
+						return errors.Wrapf(err, "PutSingleBalanceSnapshotWithWB: problem with "+
+							"stakerPKID (%v), validatorPKID (%v) stakeAmountNanos (%v) and firstSnapshotHeight "+
+							"(%v)", lockedStakeEntry.StakerPKID, lockedStakeEntry.ValidatorPKID,
+							lockedStakeEntry.LockedAmountNanos.Uint64(),
+							snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight)
+					}
+
+					currentCounter++
+					if currentCounter%statusLoggingInterval == 0 {
+						glog.Infof("handleSnapshotCompleted: Processed %d of %d locked stake balances in %v. %d%% complete",
+							currentCounter, totalCount, time.Since(currentTime), (100*currentCounter)/totalCount)
+						currentTime = time.Now()
+					}
+					if currentCounter >= balancesPerBlock && currentBlockHeight < snapshotBlockHeight {
+						node.Index.PutHypersyncBlockLockedStakeBalancesWithWB(wb, currentBlockHeight,
 							lockedStakerValidatorBalances, LockedStakeDESOBalance)
+						lockedStakerValidatorBalances = make(map[LockedStakeBalanceMapKey]uint64)
+						currentBlockHeight++
+						currentCounter = 0
+						if currentBlockHeight%writeBatchSize == 0 {
+							flushTime := time.Now()
+							if err = wb.Flush(); err != nil {
+								return errors.Wrapf(err, "Problem flushing write batch")
+							}
+							glog.Infof("handleSnapshotCompleted: Locked stake balance Flush took: %v", time.Since(flushTime))
+						}
 					}
-					return nil
-				})
+				}
+				if currentCounter > 0 {
+					node.Index.PutHypersyncBlockLockedStakeBalancesWithWB(wb, currentBlockHeight,
+						lockedStakerValidatorBalances, LockedStakeDESOBalance)
+					flushTime := time.Now()
+					if err := wb.Flush(); err != nil {
+						return errors.Wrapf(err, "Problem flushing write batch")
+					}
+					glog.Infof("handleSnapshotCompleted: Locked stake balance Flush took: %v", time.Since(flushTime))
+				}
+				return nil
 			})
 			if err != nil {
 				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: Problem iterating locked stake "+
@@ -425,13 +525,16 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		glog.Infof("handleBlockConnected: utxoView is nil for height: %d", event.Block.Header.Height)
 		return
 	}
+	currentTime := time.Now()
 	// If we get here, then we're connecting a block after the first snapshot OR we
 	// don't have a snapshot. We output extra metadata for this block to ensure
 	// Rosetta connects it appropriately.
 
+	wb := node.Index.db.NewWriteBatch()
+	defer wb.Cancel()
 	// Save a balance snapshot
 	balances := event.UtxoView.PublicKeyToDeSoBalanceNanos
-	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, DESOBalance, balances); err != nil {
+	if err := node.Index.PutBalanceSnapshotWithWB(wb, event.Block.Header.Height, DESOBalance, balances); err != nil {
 		glog.Errorf("PutBalanceSnapshot: %v", err)
 	}
 
@@ -458,7 +561,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		lockedBalances[*lib.NewPublicKey(profile.PublicKey)] = balanceToPut
 	}
 
-	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, CreatorCoinLockedBalance,
+	if err := node.Index.PutBalanceSnapshotWithWB(wb, event.Block.Header.Height, CreatorCoinLockedBalance,
 		lockedBalances); err != nil {
 		glog.Errorf("PutLockedBalanceSnapshot: %v", err)
 	}
@@ -477,7 +580,9 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		}
 		validatorEntryBalances[*lib.NewPublicKey(validator.ValidatorPKID.ToBytes())] = balanceToPut
 	}
-	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, ValidatorStakedDESOBalance, validatorEntryBalances); err != nil {
+
+	if err := node.Index.PutBalanceSnapshotWithWB(wb, event.Block.Header.Height, ValidatorStakedDESOBalance,
+		validatorEntryBalances); err != nil {
 		glog.Errorf("PutStakedBalanceSnapshot: %v", err)
 	}
 
@@ -500,10 +605,15 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		}] = balanceToPut
 	}
 
-	if err := node.Index.PutLockedStakeBalanceSnapshot(event.Block.Header.Height, LockedStakeDESOBalance,
+	if err := node.Index.PutLockedStakeBalanceSnapshotWithWB(wb, event.Block.Header.Height, LockedStakeDESOBalance,
 		lockedStakeEntryBalances); err != nil {
-		glog.Errorf("PutLockedStakeBalanceSnapshot: %v", err)
+		glog.Errorf("handleBlockConnected: PutLockedStakeBalanceSnapshot: %v", err)
 	}
+
+	if err := wb.Flush(); err != nil {
+		glog.Errorf("Flush: %v", err)
+	}
+	glog.Infof("handleBlockConnected: Processed block %d in %v", event.Block.Header.Height, time.Since(currentTime))
 }
 
 func (node *Node) handleTransactionConnected(event *lib.TransactionEvent) {
