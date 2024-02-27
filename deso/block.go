@@ -252,6 +252,18 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 			// Add inputs for DAO Coin Limit Orders
 			daoCoinLimitOrderOps := node.getDAOCoinLimitOrderOps(txn, utxoOpsForTxn, len(ops))
 			ops = append(ops, daoCoinLimitOrderOps...)
+
+			// Add operations for stake transactions
+			stakeOps := node.getStakeOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, stakeOps...)
+
+			// Add operations for unstake transactions
+			unstakeOps := node.getUnstakeOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, unstakeOps...)
+
+			// Add operations for unlock stake transactions
+			unlockStakeOps := node.getUnlockStakeOps(txn, utxoOpsForTxn, len(ops))
+			ops = append(ops, unlockStakeOps...)
 		}
 
 		transaction.Operations = squashOperations(ops)
@@ -380,12 +392,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 					OperationIdentifier: &types.OperationIdentifier{
 						Index: 0,
 					},
-					Account: &types.AccountIdentifier{
-						Address: lib.Base58CheckEncode(pkid[:], false, node.Params),
-						SubAccount: &types.SubAccountIdentifier{
-							Address: ValidatorEntry,
-						},
-					},
+					Account: node.getValidatorEntrySubAccountIdentifierForValidator(lib.NewPKID(pkid[:])),
 					Amount: &types.Amount{
 						Value:    strconv.FormatUint(balance, 10),
 						Currency: &Currency,
@@ -420,11 +427,11 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 					OperationIdentifier: &types.OperationIdentifier{
 						Index: 0,
 					},
-					Account: &types.AccountIdentifier{
-						Address: lib.Base58CheckEncode(lockedStakeBalanceMapKey.StakerPKID[:], false, node.Params),
-						SubAccount: node.getLockedStakeEntrySubAccountIdentifierForValidator(
-							&lockedStakeBalanceMapKey.ValidatorPKID, lockedStakeBalanceMapKey.LockedAtEpochNumber),
-					},
+					Account: node.getLockedStakeEntryIdentifierForValidator(
+						&lockedStakeBalanceMapKey.StakerPKID,
+						&lockedStakeBalanceMapKey.ValidatorPKID,
+						lockedStakeBalanceMapKey.LockedAtEpochNumber,
+					),
 					Amount: &types.Amount{
 						Value:    strconv.FormatUint(balance, 10),
 						Currency: &Currency,
@@ -942,9 +949,21 @@ func (node *Node) getBalanceModelSpends(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*li
 }
 
 // getLockedStakeEntrySubAccountIdentifierForValidator returns a SubAccountIdentifier for a locked stake entry.
-func (node *Node) getLockedStakeEntrySubAccountIdentifierForValidator(validatorPKID *lib.PKID, lockedAtEpochNumber uint64) *types.SubAccountIdentifier {
-	return &types.SubAccountIdentifier{
-		Address: fmt.Sprintf("%v-%v-%v", LockedStakeEntry, lib.Base58CheckEncode(validatorPKID.ToBytes(), false, node.Params), lockedAtEpochNumber),
+func (node *Node) getLockedStakeEntryIdentifierForValidator(stakerPKID *lib.PKID, validatorPKID *lib.PKID, lockedAtEpochNumber uint64) *types.AccountIdentifier {
+	return &types.AccountIdentifier{
+		Address: lib.Base58CheckEncode(stakerPKID.ToBytes(), false, node.Params),
+		SubAccount: &types.SubAccountIdentifier{
+			Address: fmt.Sprintf("%v-%v-%v", LockedStakeEntry, lib.Base58CheckEncode(validatorPKID.ToBytes(), false, node.Params), lockedAtEpochNumber),
+		},
+	}
+}
+
+func (node *Node) getValidatorEntrySubAccountIdentifierForValidator(validatorPKID *lib.PKID) *types.AccountIdentifier {
+	return &types.AccountIdentifier{
+		Address: lib.Base58CheckEncode(validatorPKID.ToBytes(), false, node.Params),
+		SubAccount: &types.SubAccountIdentifier{
+			Address: ValidatorEntry,
+		},
 	}
 }
 
@@ -961,6 +980,158 @@ func (node *Node) GetValidatorPKIDFromSubAccountIdentifier(subAccount *types.Sub
 		return nil, fmt.Errorf("invalid subaccount for validator PKID extraction")
 	}
 	return lib.NewPKID(validatorPKIDBytes), nil
+}
+
+func (node *Node) getStakeOps(txn *lib.MsgDeSoTxn, utxoOps []*lib.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeStake {
+		return nil
+	}
+
+	var operations []*types.Operation
+	for _, utxoOp := range utxoOps {
+		// We only need an OUTPUT operation here as the INPUT operation
+		// is covered by the getBalanceModelSpends function.
+		if utxoOp.Type == lib.OperationTypeStake {
+			prevValidatorEntry := utxoOp.PrevValidatorEntry
+			if prevValidatorEntry == nil {
+				// TODO: This is a bad error...
+				glog.Error("getStakeOps: prevValidatorEntry was nil")
+				continue
+			}
+			realTxMeta := txn.TxnMeta.(*lib.StakeMetadata)
+			if realTxMeta == nil {
+				glog.Error("getStakeOps: realTxMeta was nil")
+				continue
+			}
+			stakeAmountNanos := realTxMeta.StakeAmountNanos
+			if !stakeAmountNanos.IsUint64() {
+				glog.Error("getStakeOps: stakeAmountNanos was not a uint64")
+				continue
+			}
+			stakeAmountNanosUint64 := stakeAmountNanos.Uint64()
+
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(numOps),
+				},
+				Account: node.getValidatorEntrySubAccountIdentifierForValidator(prevValidatorEntry.ValidatorPKID),
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(stakeAmountNanosUint64, 10),
+					Currency: &Currency,
+				},
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			})
+			numOps++
+		}
+	}
+	return operations
+}
+
+func (node *Node) getUnstakeOps(txn *lib.MsgDeSoTxn, utxoOps []*lib.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeUnstake {
+		return nil
+	}
+
+	var operations []*types.Operation
+	for _, utxoOp := range utxoOps {
+		if utxoOp.Type == lib.OperationTypeUnstake {
+			prevValidatorEntry := utxoOp.PrevValidatorEntry
+			if prevValidatorEntry == nil {
+				glog.Error("getUnstakeOps: prevValidatorEntry was nil")
+				continue
+			}
+			prevStakeEntries := utxoOp.PrevStakeEntries
+			if len(prevStakeEntries) != 1 {
+				glog.Error("getUnstakeOps: prevStakeEntries was not of length 1")
+				continue
+			}
+			prevStakeEntry := prevStakeEntries[0]
+			realTxMeta := txn.TxnMeta.(*lib.UnstakeMetadata)
+			if realTxMeta == nil {
+				glog.Error("getUnstakeOps: realTxMeta was nil")
+				continue
+			}
+			unstakeAmountNanos := realTxMeta.UnstakeAmountNanos
+			if !unstakeAmountNanos.IsUint64() {
+				glog.Error("getUnstakeOps: unstakeAmountNanos was not a uint64")
+				continue
+			}
+			unstakeAmountNanosUint64 := unstakeAmountNanos.Uint64()
+			// First use an "input" from the ValidatorEntry
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(numOps),
+				},
+				Account: node.getValidatorEntrySubAccountIdentifierForValidator(prevValidatorEntry.ValidatorPKID),
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(unstakeAmountNanosUint64, 10),
+					Currency: &Currency,
+				},
+				Status: &SuccessStatus,
+				Type:   InputOpType,
+			})
+			numOps++
+			operations = append(operations, &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(numOps),
+				},
+				Account: node.getLockedStakeEntryIdentifierForValidator(
+					prevStakeEntry.StakerPKID,
+					prevValidatorEntry.ValidatorPKID,
+					0,
+				),
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(unstakeAmountNanosUint64, 10),
+					Currency: &Currency,
+				},
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			})
+			numOps++
+		}
+	}
+	return operations
+}
+
+func (node *Node) getUnlockStakeOps(txn *lib.MsgDeSoTxn, utxoOps []*lib.UtxoOperation, numOps int) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() != lib.TxnTypeUnlockStake {
+		return nil
+	}
+
+	var operations []*types.Operation
+	for _, utxoOp := range utxoOps {
+		if utxoOp.Type == lib.OperationTypeUnlockStake {
+			for _, prevLockedStakeEntry := range utxoOp.PrevLockedStakeEntries {
+				if !prevLockedStakeEntry.LockedAmountNanos.IsUint64() {
+					glog.Error("getUnlockStakeOps: lockedAmountNanos was not a uint64")
+					continue
+				}
+				lockedAmountNanosUint64 := prevLockedStakeEntry.LockedAmountNanos.Uint64()
+				// Each locked stake entry is an "input" to the UnlockStake txn
+				// We spend ALL the lockedAmountNanos from each locked stake entry in
+				// an unlocked transaction
+				operations = append(operations, &types.Operation{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: int64(numOps),
+					},
+					Account: node.getLockedStakeEntryIdentifierForValidator(
+						prevLockedStakeEntry.StakerPKID,
+						prevLockedStakeEntry.ValidatorPKID,
+						prevLockedStakeEntry.LockedAtEpochNumber,
+					),
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(lockedAmountNanosUint64, 10),
+						Currency: &Currency,
+					},
+					Status: &SuccessStatus,
+					Type:   InputOpType,
+				})
+				numOps++
+			}
+		}
+	}
+	return operations
 }
 
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
