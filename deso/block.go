@@ -323,7 +323,6 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 		return []*types.Transaction{}
 	}
 
-	// TODO: do we need staked and locked stake balances here?
 	balances, lockedBalances, stakedDESOBalances, lockedStakeDESOBalances := node.Index.GetHypersyncBlockBalances(blockHeight)
 
 	// We create a fake genesis block that will contain a portion of the balances downloaded during hypersync.
@@ -689,10 +688,6 @@ func (node *Node) getSwapIdentityOps(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.U
 			Currency: &Currency,
 		},
 	})
-
-	// TODO: Do we need to do this for ValidatorEntry and LockedStakeEntries as well? If so,
-	// we'll need to expose add ToValidatorEntry, FromValidatorEntry, ToLockedStakeEntries, and
-	// FromLockedStakeEntries to the UtxoOperation.
 
 	return operations
 }
