@@ -302,7 +302,6 @@ func (node *Node) handleSnapshotCompleted() {
 				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: Problem iterating staked "+
 					"balances DeSo nanos: error: (%v)", err)))
 			}
-
 		}
 
 		// Create a new scope to avoid name collision errors
@@ -399,7 +398,6 @@ func (node *Node) handleSnapshotCompleted() {
 				glog.Errorf(lib.CLog(lib.Red, fmt.Sprintf("handleSnapshotCompleted: Problem iterating locked stake "+
 					"balances DeSo nanos: error: (%v)", err)))
 			}
-
 		}
 	}
 }
