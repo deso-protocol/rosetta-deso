@@ -1120,7 +1120,7 @@ func (node *Node) getUnstakeOps(txn *lib.MsgDeSoTxn, utxoOps []*lib.UtxoOperatio
 				Account: node.getLockedStakeEntryIdentifierForValidator(
 					prevStakeEntry.StakerPKID,
 					prevValidatorEntry.ValidatorPKID,
-					0,
+					utxoOp.LockedAtEpochNumber,
 				),
 				Amount: &types.Amount{
 					Value:    strconv.FormatUint(unstakeAmountNanosUint64, 10),
