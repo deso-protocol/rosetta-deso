@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/deso-protocol/core/lib"
@@ -273,7 +274,8 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 		return []*types.Transaction{}
 	}
 
-	balances, lockedBalances := node.Index.GetHypersyncBlockBalances(blockHeight)
+	// TODO: do we need staked and locked stake balances here?
+	balances, lockedBalances, stakedDESOBalances, lockedStakeDESOBalances := node.Index.GetHypersyncBlockBalances(blockHeight)
 
 	// We create a fake genesis block that will contain a portion of the balances downloaded during hypersync.
 	// In addition, we need to lowkey reinvent these transactions, including, in particular, their transaction
@@ -341,6 +343,87 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 						SubAccount: &types.SubAccountIdentifier{
 							Address: CreatorCoin,
 						},
+					},
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(balance, 10),
+						Currency: &Currency,
+					},
+					Status: &SuccessStatus,
+					Type:   OutputOpType,
+				},
+			}),
+		})
+	}
+
+	// We create a fake genesis block of all the staked DESO at the latest snapshot height.
+	// We represent all DESO staked to a single validator as a single subaccount.
+	// This mirrors how we treat creator coins, a pool of DESO as a subaccount of the creator.
+	// This acts as a pool of all the DESO staked in StakeEntry objects with a given Validator.
+	// We chose to use validators instead of stakers here as there are fewer validators and
+	// thus fewer subaccounts to keep track of. Note that we are using PKIDs for the validator
+	// instead of a public key, so we do not need to track balance changes when a validator
+	// has a swap identity performed on it.
+	// Account identifier: Validator PKID
+	// Subaccount identifier: VALIDATOR_ENTRY
+	for pkid, balance := range stakedDESOBalances {
+		if balance == 0 {
+			continue
+		}
+		nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+		currentHash = string(nextHash[:])
+		transactions = append(transactions, &types.Transaction{
+			TransactionIdentifier: &types.TransactionIdentifier{
+				Hash: nextHash.String(),
+			},
+			Operations: squashOperations([]*types.Operation{
+				{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: 0,
+					},
+					Account: &types.AccountIdentifier{
+						Address: lib.Base58CheckEncode(pkid[:], false, node.Params),
+						SubAccount: &types.SubAccountIdentifier{
+							Address: ValidatorEntry,
+						},
+					},
+					Amount: &types.Amount{
+						Value:    strconv.FormatUint(balance, 10),
+						Currency: &Currency,
+					},
+					Status: &SuccessStatus,
+					Type:   OutputOpType,
+				},
+			}),
+		})
+	}
+
+	// We create a fake genesis block of all the locked stake DESO at the latest snapshot height.
+	// Locked stake DESO is represented as a subaccount of the staker. A locked stake entry is
+	// unique by the combination of Staker PKID + Validator PKID + LockedAtEpochNumber, so we
+	// use Validator PKID + LockedAtEpochNumber as the subaccount identifier. Note that we are
+	// using PKIDs for the validator and staker instead of public keys, so we do not need to
+	// track balance changes if a swap identity were performed on either.
+	// Account Identifier: Staker PKID
+	// Subaccount Identifier: LOCKED_STAKE_ENTRY || Validator PKID || LockedAtEpochNumber
+	for lockedStakeBalanceMapKey, balance := range lockedStakeDESOBalances {
+		if balance == 0 {
+			continue
+		}
+		nextHash := lib.Sha256DoubleHash([]byte(currentHash))
+		currentHash = string(nextHash[:])
+		transactions = append(transactions, &types.Transaction{
+			TransactionIdentifier: &types.TransactionIdentifier{
+				Hash: nextHash.String(),
+			},
+			Operations: squashOperations([]*types.Operation{
+				{
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: 0,
+					},
+					Account: &types.AccountIdentifier{
+						Address: lib.Base58CheckEncode(lockedStakeBalanceMapKey.StakerPKID[:], false, node.Params),
+						SubAccount: node.getLockedStakeEntrySubAccountIdentifierForValidator(
+							&lockedStakeBalanceMapKey.ValidatorPKID, lockedStakeBalanceMapKey.LockedAtEpochNumber),
 					},
 					Amount: &types.Amount{
 						Value:    strconv.FormatUint(balance, 10),
@@ -856,6 +939,28 @@ func (node *Node) getBalanceModelSpends(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*li
 		}
 	}
 	return operations
+}
+
+// getLockedStakeEntrySubAccountIdentifierForValidator returns a SubAccountIdentifier for a locked stake entry.
+func (node *Node) getLockedStakeEntrySubAccountIdentifierForValidator(validatorPKID *lib.PKID, lockedAtEpochNumber uint64) *types.SubAccountIdentifier {
+	return &types.SubAccountIdentifier{
+		Address: fmt.Sprintf("%v-%v-%v", LockedStakeEntry, lib.Base58CheckEncode(validatorPKID.ToBytes(), false, node.Params), lockedAtEpochNumber),
+	}
+}
+
+func (node *Node) GetValidatorPKIDFromSubAccountIdentifier(subAccount *types.SubAccountIdentifier) (*lib.PKID, error) {
+	if subAccount == nil || !strings.HasPrefix(subAccount.Address, LockedStakeEntry) {
+		return nil, fmt.Errorf("invalid subaccount for validator PKID extraction")
+	}
+	segments := strings.Split(subAccount.Address, "-")
+	if len(segments) != 2 {
+		return nil, fmt.Errorf("invalid subaccount for validator PKID extraction")
+	}
+	validatorPKIDBytes, _, err := lib.Base58CheckDecode(segments[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid subaccount for validator PKID extraction")
+	}
+	return lib.NewPKID(validatorPKIDBytes), nil
 }
 
 func (node *Node) getImplicitOutputs(txn *lib.MsgDeSoTxn, utxoOpsForTxn []*lib.UtxoOperation, numOps int) []*types.Operation {
