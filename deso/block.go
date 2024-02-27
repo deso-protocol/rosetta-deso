@@ -61,7 +61,7 @@ func (node *Node) GetBlock(hash string) *types.Block {
 		return &types.Block{
 			BlockIdentifier:       blockIdentifier,
 			ParentBlockIdentifier: parentBlockIdentifier,
-			Timestamp:             int64(blockNode.Header.TstampSecs) * 1000,
+			Timestamp:             int64(blockNode.Header.TstampNanoSecs) / 1e6, // Convert nanoseconds to milliseconds
 			Transactions:          transactions,
 		}
 	}
@@ -76,7 +76,7 @@ func (node *Node) GetBlock(hash string) *types.Block {
 	return &types.Block{
 		BlockIdentifier:       blockIdentifier,
 		ParentBlockIdentifier: parentBlockIdentifier,
-		Timestamp:             int64(blockNode.Header.TstampSecs) * 1000,
+		Timestamp:             int64(blockNode.Header.TstampNanoSecs) / 1e6, // Convert nanoseconds to milliseconds
 		Transactions:          node.GetTransactionsForConvertBlock(block),
 	}
 }

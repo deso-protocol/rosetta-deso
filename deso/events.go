@@ -264,6 +264,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 	if err != nil {
 		glog.Errorf("PutLockedBalanceSnapshot: %v", err)
 	}
+	// TODO: Add support for locked DESO balance entries here.
 }
 
 func (node *Node) handleTransactionConnected(event *lib.TransactionEvent) {
