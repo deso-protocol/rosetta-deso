@@ -352,7 +352,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 			TransactionIdentifier: &types.TransactionIdentifier{
 				Hash: nextHash.String(),
 			},
-			Operations: squashOperations([]*types.Operation{
+			Operations: []*types.Operation{
 				{
 					OperationIdentifier: &types.OperationIdentifier{
 						Index: 0,
@@ -367,7 +367,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 					Status: &SuccessStatus,
 					Type:   OutputOpType,
 				},
-			}),
+			},
 		})
 	}
 	for pk, balance := range lockedBalances {
@@ -381,7 +381,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 			TransactionIdentifier: &types.TransactionIdentifier{
 				Hash: nextHash.String(),
 			},
-			Operations: squashOperations([]*types.Operation{
+			Operations: []*types.Operation{
 				{
 					OperationIdentifier: &types.OperationIdentifier{
 						Index: 0,
@@ -399,7 +399,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 					Status: &SuccessStatus,
 					Type:   OutputOpType,
 				},
-			}),
+			},
 		})
 	}
 
@@ -423,7 +423,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 			TransactionIdentifier: &types.TransactionIdentifier{
 				Hash: nextHash.String(),
 			},
-			Operations: squashOperations([]*types.Operation{
+			Operations: []*types.Operation{
 				{
 					OperationIdentifier: &types.OperationIdentifier{
 						Index: 0,
@@ -436,7 +436,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 					Status: &SuccessStatus,
 					Type:   OutputOpType,
 				},
-			}),
+			},
 		})
 	}
 
@@ -458,7 +458,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 			TransactionIdentifier: &types.TransactionIdentifier{
 				Hash: nextHash.String(),
 			},
-			Operations: squashOperations([]*types.Operation{
+			Operations: []*types.Operation{
 				{
 					OperationIdentifier: &types.OperationIdentifier{
 						Index: 0,
@@ -475,7 +475,7 @@ func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHas
 					Status: &SuccessStatus,
 					Type:   OutputOpType,
 				},
-			}),
+			},
 		})
 	}
 

@@ -254,6 +254,13 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
+	var blsKeyStore *lib.BLSKeystore
+	if node.Config.PosValidatorSeed != "" {
+		blsKeyStore, err = lib.NewBLSKeystore(node.Config.PosValidatorSeed)
+		if err != nil {
+			panic(err)
+		}
+	}
 	shouldRestart := false
 	node.Server, err, shouldRestart = lib.NewServer(
 		node.Config.Params,
@@ -285,7 +292,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		readOnly,
 		false,
 		nil,
-		"",
+		node.Config.BlockProducerSeed,
 		[]string{},
 		0,
 		node.EventManager,
@@ -293,7 +300,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.Config.ForceChecksum,
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
-		nil,        // TODO: support for rosetta as a validator?
+		blsKeyStore,
 		3000000000, // 3GB max mempool size bytes
 		30000,      // 30 seconds mempool back up time millis
 		1,          // 1, mempool fee estimator num mempool blocks

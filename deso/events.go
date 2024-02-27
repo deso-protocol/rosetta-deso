@@ -420,6 +420,11 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 			}
 		}
 	}
+	glog.Infof("handleBlockConnected: height: %d", event.Block.Header.Height)
+	if event.UtxoView == nil {
+		glog.Infof("handleBlockConnected: utxoView is nil for height: %d", event.Block.Header.Height)
+		return
+	}
 	// If we get here, then we're connecting a block after the first snapshot OR we
 	// don't have a snapshot. We output extra metadata for this block to ensure
 	// Rosetta connects it appropriately.
@@ -472,8 +477,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		}
 		validatorEntryBalances[*lib.NewPublicKey(validator.ValidatorPKID.ToBytes())] = balanceToPut
 	}
-	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, ValidatorStakedDESOBalance, validatorEntryBalances
-	); err != nil {
+	if err := node.Index.PutBalanceSnapshot(event.Block.Header.Height, ValidatorStakedDESOBalance, validatorEntryBalances); err != nil {
 		glog.Errorf("PutStakedBalanceSnapshot: %v", err)
 	}
 
@@ -500,8 +504,6 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		lockedStakeEntryBalances); err != nil {
 		glog.Errorf("PutLockedStakeBalanceSnapshot: %v", err)
 	}
-
-	// TODO: Add support for locked DESO balance entries via coin lockups here.
 }
 
 func (node *Node) handleTransactionConnected(event *lib.TransactionEvent) {
