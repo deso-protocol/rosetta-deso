@@ -174,52 +174,70 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 	lockedStakeDESOBalances := make(map[LockedStakeBalanceMapKey]uint64)
 	err := index.db.View(func(txn *badger.Txn) error {
 		itemBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, DESOBalance))
-		if err != nil {
-			return err
-		}
-		balancesBytes, err := itemBalances.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		if err = gob.NewDecoder(bytes.NewReader(balancesBytes)).Decode(&balances); err != nil {
-			return err
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			glog.Infof("GetHypersyncBlockBalances: No balances found for block at height (%v)", blockHeight)
+		} else {
+			if err != nil {
+				return err
+			}
+			balancesBytes, err := itemBalances.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			if err = gob.NewDecoder(bytes.NewReader(balancesBytes)).Decode(&balances); err != nil {
+				return err
+			}
 		}
 
 		itemCreatorCoinLockedBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, CreatorCoinLockedBalance))
-		if err != nil {
-			return err
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			glog.Infof("GetHypersyncBlockBalances: No creator coin locked balances found for block at height (%v)", blockHeight)
+		} else {
+			if err != nil {
+				return err
+			}
+			creatorCoinLockedBalancesBytes, err := itemCreatorCoinLockedBalances.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			if err = gob.NewDecoder(bytes.NewReader(creatorCoinLockedBalancesBytes)).Decode(
+				&creatorCoinLockedBalances); err != nil {
+				return err
+			}
 		}
-		creatorCoinLockedBalancesBytes, err := itemCreatorCoinLockedBalances.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		if err = gob.NewDecoder(bytes.NewReader(creatorCoinLockedBalancesBytes)).Decode(
-			&creatorCoinLockedBalances); err != nil {
-			return err
-		}
+
 		itemValidatorStakedBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, ValidatorStakedDESOBalance))
-		if err != nil {
-			return err
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			glog.Infof("GetHypersyncBlockBalances: No validator staked balances found for block at height (%v)", blockHeight)
+		} else {
+			if err != nil {
+				return err
+			}
+			validatorStakedBalancesBytes, err := itemValidatorStakedBalances.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			if err = gob.NewDecoder(bytes.NewReader(validatorStakedBalancesBytes)).
+				Decode(&validatorStakedDESOBalances); err != nil {
+				return err
+			}
 		}
-		validatorStakedBalancesBytes, err := itemValidatorStakedBalances.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		if err = gob.NewDecoder(bytes.NewReader(validatorStakedBalancesBytes)).
-			Decode(&validatorStakedDESOBalances); err != nil {
-			return err
-		}
+
 		lockedStakedItemBalances, err := txn.Get(hypersyncHeightToBlockKey(blockHeight, LockedStakeDESOBalance))
-		if err != nil {
-			return err
-		}
-		lockedStakedBalancesBytes, err := lockedStakedItemBalances.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		if err = gob.NewDecoder(bytes.NewReader(lockedStakedBalancesBytes)).
-			Decode(&lockedStakeDESOBalances); err != nil {
-			return err
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			glog.Infof("GetHypersyncBlockBalances: No locked stake balances found for block at height (%v)", blockHeight)
+		} else {
+			if err != nil {
+				return err
+			}
+			lockedStakedBalancesBytes, err := lockedStakedItemBalances.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			if err = gob.NewDecoder(bytes.NewReader(lockedStakedBalancesBytes)).
+				Decode(&lockedStakeDESOBalances); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
