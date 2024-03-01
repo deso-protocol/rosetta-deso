@@ -308,6 +308,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		10,         // 10 milliseconds, augmented block view refresh interval millis
 		1500,       // 1500 milliseconds, pos block production interval milliseconds
 		30000,      // 30 seconds, pos timeout base duration milliseconds
+		10000,      // 10K limit on state sync mempool txn sync
 	)
 	// Set the snapshot on the rosetta index.
 	node.Index.snapshot = node.GetBlockchain().Snapshot()
