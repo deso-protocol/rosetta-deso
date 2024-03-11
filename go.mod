@@ -11,6 +11,7 @@ require (
 	github.com/deso-protocol/core v1.1.0
 	github.com/deso-protocol/go-deadlock v1.0.0
 	github.com/deso-protocol/go-merkle-tree v1.0.0
+	github.com/dgraph-io/badger/v2 v2.2007.2
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/golang/glog v1.0.0
 	github.com/mitchellh/go-homedir v1.1.0
@@ -36,6 +37,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/decred/dcrd/lru v1.1.1 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
+	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/ethereum/go-ethereum v1.9.25 // indirect

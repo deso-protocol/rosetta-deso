@@ -3,8 +3,6 @@ package deso
 import (
 	"flag"
 	"fmt"
-	"github.com/deso-protocol/go-deadlock"
-	"github.com/dgraph-io/badger/v3"
 	"math/rand"
 	"net"
 	"os"
@@ -13,6 +11,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/deso-protocol/go-deadlock"
+	"github.com/dgraph-io/badger/v3"
 
 	"github.com/btcsuite/btcd/addrmgr"
 	"github.com/btcsuite/btcd/wire"
@@ -308,6 +309,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		10,         // 10 milliseconds, augmented block view refresh interval millis
 		1500,       // 1500 milliseconds, pos block production interval milliseconds
 		30000,      // 30 seconds, pos timeout base duration milliseconds
+		10000,      // State syncer mempool txn sync limit
 	)
 	// Set the snapshot on the rosetta index.
 	node.Index.snapshot = node.GetBlockchain().Snapshot()

@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"math"
 	"sync"
+	"time"
 )
 
 const (
@@ -127,41 +128,45 @@ func hypersyncHeightToBlockKey(blockHeight uint64, balanceType BalanceType) []by
 	return prefix
 }
 
-func (index *RosettaIndex) PutHypersyncBlockBalances(
-	blockHeight uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) {
+func (index *RosettaIndex) PutHypersyncBlockBalancesWithWB(
+	wb *badger.WriteBatch, blockHeight uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) {
+	putBlockStartTime := time.Now()
 	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
 		balanceType != ValidatorStakedDESOBalance {
-		glog.Error("PutHypersyncBlockBalances: Invalid balance type passed in")
+		glog.Error("PutHypersyncBlockBalancesWithWB: Invalid balance type passed in")
 		return
 	}
-	err := index.db.Update(func(txn *badger.Txn) error {
-		blockBytes := bytes.NewBuffer([]byte{})
-		if err := gob.NewEncoder(blockBytes).Encode(&balances); err != nil {
-			return err
-		}
-		return txn.Set(hypersyncHeightToBlockKey(blockHeight, balanceType), blockBytes.Bytes())
-	})
-	if err != nil {
-		glog.Error(errors.Wrapf(err, "PutHypersyncBlockBalances: Problem putting block: Error:"))
+	currentTime := time.Now()
+	blockBytes := bytes.NewBuffer([]byte{})
+	if err := gob.NewEncoder(blockBytes).Encode(&balances); err != nil {
+		glog.Errorf("PutHypersyncBlockBalancesWithWB: error gob encoding balances: %v", err)
+		return
 	}
+	glog.Infof("Time to gob encode %d balances: %v", len(balances), time.Since(currentTime))
+	if err := wb.Set(hypersyncHeightToBlockKey(blockHeight, balanceType), blockBytes.Bytes()); err != nil {
+		glog.Error(errors.Wrapf(err, "PutHypersyncBlockBalancesWithWB: Problem putting block: Error:"))
+	}
+	glog.Infof("Time to put %d balances: %v", len(balances), time.Since(putBlockStartTime))
 }
 
-func (index *RosettaIndex) PutHypersyncBlockLockedStakeBalances(
-	blockHeight uint64, stakeEntries map[LockedStakeBalanceMapKey]uint64, balanceType BalanceType) {
+func (index *RosettaIndex) PutHypersyncBlockLockedStakeBalancesWithWB(
+	wb *badger.WriteBatch, blockHeight uint64, stakeEntries map[LockedStakeBalanceMapKey]uint64, balanceType BalanceType) {
+	putBlockStartTime := time.Now()
 	if balanceType != LockedStakeDESOBalance {
-		glog.Error("PutHypersyncBlockLockedStakeBalances: Invalid balance type passed in")
+		glog.Error("PutHypersyncBlockLockedStakeBalancesWithWB: Invalid balance type passed in")
 		return
 	}
-	err := index.db.Update(func(txn *badger.Txn) error {
-		blockBytes := bytes.NewBuffer([]byte{})
-		if err := gob.NewEncoder(blockBytes).Encode(&stakeEntries); err != nil {
-			return err
-		}
-		return txn.Set(hypersyncHeightToBlockKey(blockHeight, balanceType), blockBytes.Bytes())
-	})
-	if err != nil {
-		glog.Error(errors.Wrapf(err, "PutHypersyncBlockLockedStakeBalances: Problem putting block: Error:"))
+	currentTime := time.Now()
+	blockBytes := bytes.NewBuffer([]byte{})
+	if err := gob.NewEncoder(blockBytes).Encode(&stakeEntries); err != nil {
+		glog.Errorf("PutHypersyncBlockLockedStakeBalancesWithDB: error gob encoding locked stake entries: %v", err)
+		return
 	}
+	glog.Infof("Time to gob encode %d locked stake entries: %v", len(stakeEntries), time.Since(currentTime))
+	if err := wb.Set(hypersyncHeightToBlockKey(blockHeight, balanceType), blockBytes.Bytes()); err != nil {
+		glog.Error(errors.Wrapf(err, "PutHypersyncBlockLockedStakeBalancesWithWB: Problem putting block: Error:"))
+	}
+	glog.Infof("Time to put %d locked stake entries: %v", len(stakeEntries), time.Since(putBlockStartTime))
 }
 
 func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
@@ -249,25 +254,14 @@ func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
 	return balances, creatorCoinLockedBalances, validatorStakedDESOBalances, lockedStakeDESOBalances
 }
 
-func (index *RosettaIndex) PutBalanceSnapshot(
-	height uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) error {
-	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
-		balanceType != ValidatorStakedDESOBalance {
-		return errors.New("PutBalanceSnapshot: Invalid balance type passed in")
-	}
-	return index.db.Update(func(txn *badger.Txn) error {
-		return index.PutBalanceSnapshotWithTxn(txn, height, balanceType, balances)
-	})
-}
-
-func (index *RosettaIndex) PutBalanceSnapshotWithTxn(
-	txn *badger.Txn, height uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) error {
+func (index *RosettaIndex) PutBalanceSnapshotWithWB(
+	wb *badger.WriteBatch, height uint64, balanceType BalanceType, balances map[lib.PublicKey]uint64) error {
 	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
 		balanceType != ValidatorStakedDESOBalance {
 		return errors.New("PutBalanceSnapshotWithTxn: Invalid balance type passed in")
 	}
 	for pk, bal := range balances {
-		if err := txn.Set(balanceSnapshotKey(balanceType, &pk, height, bal), []byte{}); err != nil {
+		if err := wb.Set(balanceSnapshotKey(balanceType, &pk, height, bal), []byte{}); err != nil {
 			return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
 				"%v pub key: %v balance: %v", height, pk, bal)
 		}
@@ -275,36 +269,26 @@ func (index *RosettaIndex) PutBalanceSnapshotWithTxn(
 	return nil
 }
 
-func (index *RosettaIndex) PutSingleBalanceSnapshotWithTxn(
-	txn *badger.Txn, height uint64, balanceType BalanceType, publicKey lib.PublicKey, balance uint64) error {
+func (index *RosettaIndex) PutSingleBalanceSnapshotWithWB(
+	wb *badger.WriteBatch, height uint64, balanceType BalanceType, publicKey lib.PublicKey, balance uint64) error {
 	if balanceType != DESOBalance && balanceType != CreatorCoinLockedBalance &&
 		balanceType != ValidatorStakedDESOBalance {
-		return errors.New("PutSingleBalanceSnapshotWithTxn: Invalid balance type passed in")
+		return errors.New("PutSingleBalanceSnapshotWithWB: Invalid balance type passed in")
 	}
-	if err := txn.Set(balanceSnapshotKey(balanceType, &publicKey, height, balance), []byte{}); err != nil {
+	if err := wb.Set(balanceSnapshotKey(balanceType, &publicKey, height, balance), []byte{}); err != nil {
 		return errors.Wrapf(err, "Error in PutBalanceSnapshot for block height: "+
 			"%v pub key: %v balance: %v", height, publicKey, balance)
 	}
 	return nil
 }
 
-func (index *RosettaIndex) PutLockedStakeBalanceSnapshot(
-	height uint64, balanceType BalanceType, balances map[LockedStakeBalanceMapKey]uint64) error {
-	if balanceType != LockedStakeDESOBalance {
-		return errors.New("PutLockedStakeBalanceSnapshot: Invalid balance type passed in")
-	}
-	return index.db.Update(func(txn *badger.Txn) error {
-		return index.PutLockedStakeBalanceSnapshotWithTxn(txn, height, balanceType, balances)
-	})
-}
-
-func (index *RosettaIndex) PutLockedStakeBalanceSnapshotWithTxn(
-	txn *badger.Txn, height uint64, balanceType BalanceType, balances map[LockedStakeBalanceMapKey]uint64) error {
+func (index *RosettaIndex) PutLockedStakeBalanceSnapshotWithWB(
+	wb *badger.WriteBatch, height uint64, balanceType BalanceType, balances map[LockedStakeBalanceMapKey]uint64) error {
 	if balanceType != LockedStakeDESOBalance {
 		return errors.New("PutLockedStakeBalanceSnapshotWithTxn: Invalid balance type passed in")
 	}
 	for pk, bal := range balances {
-		if err := txn.Set(lockedStakeBalanceSnapshotKey(
+		if err := wb.Set(lockedStakeBalanceSnapshotKey(
 			balanceType, &pk.StakerPKID, &pk.ValidatorPKID, pk.LockedAtEpochNumber, height, bal), []byte{},
 		); err != nil {
 			return errors.Wrapf(err, "Error in PutLockedStakeBalanceSnapshotWithTxn for block height: "+
@@ -314,15 +298,15 @@ func (index *RosettaIndex) PutLockedStakeBalanceSnapshotWithTxn(
 	return nil
 }
 
-func (index *RosettaIndex) PutSingleLockedStakeBalanceSnapshotWithTxn(
-	txn *badger.Txn, height uint64, balanceType BalanceType, stakerPKID *lib.PKID,
+func (index *RosettaIndex) PutSingleLockedStakeBalanceSnapshotWithWB(
+	wb *badger.WriteBatch, height uint64, balanceType BalanceType, stakerPKID *lib.PKID,
 	validatorPKID *lib.PKID, lockedAtEpochNumber uint64, balance uint64) error {
 	if balanceType != LockedStakeDESOBalance {
-		return errors.New("PutSingleLockedStakeBalanceSnapshotWithTxn: Invalid balance type passed in")
+		return errors.New("PutSingleLockedStakeBalanceSnapshotWithWB: Invalid balance type passed in")
 	}
-	if err := txn.Set(lockedStakeBalanceSnapshotKey(
+	if err := wb.Set(lockedStakeBalanceSnapshotKey(
 		balanceType, stakerPKID, validatorPKID, lockedAtEpochNumber, height, balance), []byte{}); err != nil {
-		return errors.Wrapf(err, "Error in PutSingleLockedStakeBalanceSnapshotWithTxn for block height: "+
+		return errors.Wrapf(err, "Error in PutSingleLockedStakeBalanceSnapshotWithWB for block height: "+
 			"%v staker pkid: %v validator pkid: %v balance: %v", height, stakerPKID, validatorPKID, balance)
 	}
 	return nil
