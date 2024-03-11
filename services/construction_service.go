@@ -160,7 +160,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	var options preprocessOptions
-	if err := types.UnmarshalMap(request.Options, &options); err != nil {
+	if err = types.UnmarshalMap(request.Options, &options); err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
@@ -462,8 +462,9 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 	}
 
 	for _, output := range desoTxn.TxOutputs {
-		// Skip the change output when NOT using legacy utxo selection
-		if !metadata.LegacyUTXOSelection && reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
+		// Skip the change output when NOT using legacy utxo selection AND it's not a balance model transaction
+		if !metadata.LegacyUTXOSelection && reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) &&
+			desoTxn.TxnNonce == nil {
 			continue
 		}
 
@@ -521,7 +522,6 @@ func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request
 	if err = desoTxn.FromBytes(txn.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
-
 	if err := s.node.VerifyAndBroadcastTransaction(desoTxn); err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}

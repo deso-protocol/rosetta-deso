@@ -3,8 +3,6 @@ package deso
 import (
 	"flag"
 	"fmt"
-	"github.com/deso-protocol/go-deadlock"
-	"github.com/dgraph-io/badger/v3"
 	"math/rand"
 	"net"
 	"os"
@@ -13,6 +11,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/deso-protocol/go-deadlock"
+	"github.com/dgraph-io/badger/v3"
 
 	"github.com/btcsuite/btcd/addrmgr"
 	"github.com/btcsuite/btcd/wire"
@@ -234,7 +235,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rosettaIndexOpts := lib.PerformanceBadgerOptions(rosettaIndexDir)
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
-	node.Index = NewIndex(rosettaIndex)
+	node.Index = NewIndex(rosettaIndex, node.chainDB)
 
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
@@ -254,6 +255,13 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
+	var blsKeyStore *lib.BLSKeystore
+	if node.Config.PosValidatorSeed != "" {
+		blsKeyStore, err = lib.NewBLSKeystore(node.Config.PosValidatorSeed)
+		if err != nil {
+			panic(err)
+		}
+	}
 	shouldRestart := false
 	node.Server, err, shouldRestart = lib.NewServer(
 		node.Config.Params,
@@ -285,7 +293,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		readOnly,
 		false,
 		nil,
-		"",
+		node.Config.BlockProducerSeed,
 		[]string{},
 		0,
 		node.EventManager,
@@ -293,7 +301,18 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.Config.ForceChecksum,
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
+		blsKeyStore,
+		3000000000, // 3GB max mempool size bytes
+		30000,      // 30 seconds mempool back up time millis
+		1,          // 1, mempool fee estimator num mempool blocks
+		50,         // 50, mempool fee estimator num past blocks
+		10,         // 10 milliseconds, augmented block view refresh interval millis
+		1500,       // 1500 milliseconds, pos block production interval milliseconds
+		30000,      // 30 seconds, pos timeout base duration milliseconds
+		10000,      // State syncer mempool txn sync limit
 	)
+	// Set the snapshot on the rosetta index.
+	node.Index.snapshot = node.GetBlockchain().Snapshot()
 	if err != nil {
 		if shouldRestart {
 			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+

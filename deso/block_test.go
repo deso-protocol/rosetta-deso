@@ -3,11 +3,12 @@ package deso
 import (
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
+	"testing"
+
 	"github.com/deso-protocol/core/lib"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/stretchr/testify/require"
-	"path/filepath"
-	"testing"
 )
 
 // This test is no longer needed, but we keep it here because it initializes a simplified node and index and might be
@@ -37,7 +38,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
 	require.NoError(err)
-	node.Index = NewIndex(rosettaIndex)
+	node.Index = NewIndex(rosettaIndex, node.chainDB)
 
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
@@ -95,6 +96,15 @@ func TestUtxoOpsProblem(t *testing.T) {
 		node.Config.ForceChecksum,
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
+		nil,        // TODO: support for rosetta as a validator?
+		3000000000, // 3GB max mempool size bytes
+		30000,      // 30 seconds mempool back up time millis
+		1,          // 1, mempool fee estimator num mempool blocks
+		50,         // 50, mempool fee estimator num past blocks
+		10,         // 10 milliseconds, augmented block view refresh interval millis
+		1500,       // 1500 milliseconds, pos block production interval milliseconds
+		30000,      // 30 seconds, pos timeout base duration milliseconds
+		10000,      // State syncer mempool txn sync limit
 	)
 	require.NoError(err)
 

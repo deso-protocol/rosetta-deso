@@ -5,10 +5,8 @@
 # For now, it uses a single, hardcoded public key to mine and send money.
 
 # The account used to mine and send coins is:
-# - Seed: escape gown wasp foam super claw eager foot opera hold roast cement
-# - Seed Hex: 623751da8e50c314de0e79e7857e0bba067b7ebf5cb853535da5cad2360a678e
+# - Seed Hex: b78043f5087bbaa079c5e2dadcba547dfacb9964b6d334749256d56c7c0f74fd
 # - Testnet public key base58: tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF
-# - Testnet public key bytes: 02b872c1b6acd3be581a27e53a15a2c9d095d3204dad3c2d7fe9a31f8c077126fe
 
 # Online node is running on port 17005
 ONLINE=http://localhost:17005

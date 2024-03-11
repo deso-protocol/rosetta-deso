@@ -22,6 +22,8 @@ type Config struct {
 	NodePort               int
 	DataDirectory          string
 	MinerPublicKeys        []string
+	BlockProducerSeed      string
+	PosValidatorSeed       string
 	Regtest                bool
 	ConnectIPs             []string
 	HyperSync              bool
@@ -72,6 +74,8 @@ func LoadConfig() (*Config, error) {
 	result.Port = viper.GetInt("port")
 	result.NodePort = viper.GetInt("node-port")
 	result.MinerPublicKeys = viper.GetStringSlice("miner-public-keys")
+	result.BlockProducerSeed = viper.GetString("block-producer-seed")
+	result.PosValidatorSeed = viper.GetString("pos-validator-seed")
 	result.Regtest = viper.GetBool("regtest")
 	result.ConnectIPs = viper.GetStringSlice("connect-ips")
 

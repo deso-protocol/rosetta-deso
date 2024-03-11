@@ -64,3 +64,19 @@ To run the construction checks, execute:
 ```
 bin/rosetta-cli check:construction --configuration-file rosetta-cli-conf/testnet/deso.conf
 ```
+
+### M1 Mac Users
+
+There are some issues with running the rosetta cli w/ M1 Macs. To fix this, you can run the following command to build
+the rosetta cli docker image:
+```
+docker build github.com/coinbase/mesh-cli --platform linux/amd64 -t rosetta-cli
+```
+
+Then update the configuration file to use `http://host.docker.internal:17005` instead of `http://localhost:17005` -
+basically replacing all usages of `localhost` with `host.docker.internal`.
+
+Then to run the rosetta cli check:data tests, you can run the following command:
+```
+docker run -v "$(pwd):/data" --rm -it --platform linux/amd64 rosetta-cli check:data --configuration-file /data/rosetta-cli-conf/testnet/deso.conf
+```
