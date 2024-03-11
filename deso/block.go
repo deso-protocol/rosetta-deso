@@ -155,118 +155,13 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 			TransactionIdentifier: &types.TransactionIdentifier{Hash: txnHash},
 			Metadata:              metadata,
 		}
-
-		var ops []*types.Operation
-
-		for _, input := range txn.TxInputs {
-			// Fetch the input amount from Rosetta Index
-			spentAmount, amountExists := spentUtxos[lib.UtxoKey{
-				TxID:  input.TxID,
-				Index: input.Index,
-			}]
-			if !amountExists {
-				fmt.Printf("Error: input missing for txn %v index %v\n", lib.PkToStringBoth(input.TxID[:]), input.Index)
-			}
-
-			amount := &types.Amount{
-				Value:    strconv.FormatInt(int64(spentAmount)*-1, 10),
-				Currency: &Currency,
-			}
-
-			op := &types.Operation{
-				OperationIdentifier: &types.OperationIdentifier{
-					Index: int64(len(ops)),
-				},
-
-				Account: &types.AccountIdentifier{
-					Address: lib.Base58CheckEncode(txn.PublicKey, false, node.Params),
-				},
-
-				Amount: amount,
-
-				Status: &SuccessStatus,
-				Type:   InputOpType,
-			}
-
-			ops = append(ops, op)
-		}
-
-		// If we are dealing with a legacy UTXO transaction, then we need to add the outputs from
-		// the transaction directly rather than relying on the UtxoOps.
-		if !isBalanceModelTxn {
-			for _, output := range txn.TxOutputs {
-				op := &types.Operation{
-					OperationIdentifier: &types.OperationIdentifier{
-						Index: int64(len(ops)),
-					},
-
-					Account: &types.AccountIdentifier{
-						Address: lib.Base58CheckEncode(output.PublicKey, false, node.Params),
-					},
-
-					Amount: &types.Amount{
-						Value:    strconv.FormatUint(output.AmountNanos, 10),
-						Currency: &Currency,
-					},
-
-					Status: &SuccessStatus,
-					Type:   OutputOpType,
-				}
-
-				ops = append(ops, op)
-			}
-		}
-
-		// Add all the special ops for specific txn types.
+		var utxoOpsForTxn []*lib.UtxoOperation
 		if len(utxoOpsForBlock) > 0 {
-			utxoOpsForTxn := utxoOpsForBlock[txnIndexInBlock]
-
-			// Get balance model spends
-			balanceModelSpends := node.getBalanceModelSpends(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, balanceModelSpends...)
-
-			// Add implicit outputs from UtxoOps
-			implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, implicitOutputs...)
-
-			// Add inputs/outputs for creator coins
-			creatorCoinOps := node.getCreatorCoinOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, creatorCoinOps...)
-
-			// Add inputs/outputs for swap identity
-			swapIdentityOps := node.getSwapIdentityOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, swapIdentityOps...)
-
-			// Add inputs for accept nft bid
-			acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, acceptNftOps...)
-
-			// Add inputs for bids on Buy Now NFTs
-			buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, buyNowNftBidOps...)
-
-			// Add inputs for update profile
-			updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, updateProfileOps...)
-
-			// Add inputs for DAO Coin Limit Orders
-			daoCoinLimitOrderOps := node.getDAOCoinLimitOrderOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, daoCoinLimitOrderOps...)
-
-			// Add operations for stake transactions
-			stakeOps := node.getStakeOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, stakeOps...)
-
-			// Add operations for unstake transactions
-			unstakeOps := node.getUnstakeOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, unstakeOps...)
-
-			// Add operations for unlock stake transactions
-			unlockStakeOps := node.getUnlockStakeOps(txn, utxoOpsForTxn, len(ops))
-			ops = append(ops, unlockStakeOps...)
+			utxoOpsForTxn = utxoOpsForBlock[txnIndexInBlock]
 		}
 
-		transaction.Operations = squashOperations(ops)
+		transaction.Operations = squashOperations(
+			node.getOperationsForTransaction(txn, block, spentUtxos, utxoOpsForTxn))
 
 		transactions = append(transactions, transaction)
 	}
@@ -309,6 +204,151 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 	}
 
 	return transactions
+}
+
+func (node *Node) getOperationsForTransaction(
+	txn *lib.MsgDeSoTxn,
+	block *lib.MsgDeSoBlock,
+	spentUtxos map[lib.UtxoKey]uint64,
+	utxoOpsForTxn []*lib.UtxoOperation,
+) []*types.Operation {
+	if txn.TxnMeta.GetTxnType() == lib.TxnTypeAtomicTxnsWrapper {
+		// There are no operations for the wrapper, but we need to parse
+		// operations for all inner txns.
+		innerTxns := txn.TxnMeta.(*lib.AtomicTxnsWrapperMetadata).Txns
+		ops := []*types.Operation{}
+		var opsForInnerTxns [][]*lib.UtxoOperation
+		for _, utxoOp := range utxoOpsForTxn {
+			if utxoOp.Type == lib.OperationTypeAtomicTxnsWrapper {
+				opsForInnerTxns = utxoOp.AtomicTxnsInnerUtxoOps
+				break
+			}
+		}
+		if len(opsForInnerTxns) != len(innerTxns) {
+			glog.Errorf(
+				"Error: opsForInnerTxns length %v != innerTxns length %v\n", len(opsForInnerTxns), len(innerTxns))
+			return ops
+		}
+		for ii, innerTxn := range innerTxns {
+			ops = append(ops, node.getOperationsForTransaction(innerTxn, block, spentUtxos, opsForInnerTxns[ii])...)
+		}
+		return ops
+	}
+	// DeSo started with a UTXO model but switched to a balance model at a particular block
+	// height. We need to handle both cases here.
+	isBalanceModelTxn := false
+	if block.Header.Height >= uint64(node.Params.ForkHeights.BalanceModelBlockHeight) {
+		isBalanceModelTxn = true
+	}
+
+	var ops []*types.Operation
+
+	for _, input := range txn.TxInputs {
+		// Fetch the input amount from Rosetta Index
+		spentAmount, amountExists := spentUtxos[lib.UtxoKey{
+			TxID:  input.TxID,
+			Index: input.Index,
+		}]
+		if !amountExists {
+			fmt.Printf("Error: input missing for txn %v index %v\n", lib.PkToStringBoth(input.TxID[:]), input.Index)
+		}
+
+		amount := &types.Amount{
+			Value:    strconv.FormatInt(int64(spentAmount)*-1, 10),
+			Currency: &Currency,
+		}
+
+		op := &types.Operation{
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: int64(len(ops)),
+			},
+
+			Account: &types.AccountIdentifier{
+				Address: lib.Base58CheckEncode(txn.PublicKey, false, node.Params),
+			},
+
+			Amount: amount,
+
+			Status: &SuccessStatus,
+			Type:   InputOpType,
+		}
+
+		ops = append(ops, op)
+	}
+
+	// If we are dealing with a legacy UTXO transaction, then we need to add the outputs from
+	// the transaction directly rather than relying on the UtxoOps.
+	if !isBalanceModelTxn {
+		for _, output := range txn.TxOutputs {
+			op := &types.Operation{
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(len(ops)),
+				},
+
+				Account: &types.AccountIdentifier{
+					Address: lib.Base58CheckEncode(output.PublicKey, false, node.Params),
+				},
+
+				Amount: &types.Amount{
+					Value:    strconv.FormatUint(output.AmountNanos, 10),
+					Currency: &Currency,
+				},
+
+				Status: &SuccessStatus,
+				Type:   OutputOpType,
+			}
+
+			ops = append(ops, op)
+		}
+	}
+
+	// Add all the special ops for specific txn types.
+	if len(utxoOpsForTxn) > 0 {
+		// Get balance model spends
+		balanceModelSpends := node.getBalanceModelSpends(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, balanceModelSpends...)
+
+		// Add implicit outputs from UtxoOps
+		implicitOutputs := node.getImplicitOutputs(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, implicitOutputs...)
+
+		// Add inputs/outputs for creator coins
+		creatorCoinOps := node.getCreatorCoinOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, creatorCoinOps...)
+
+		// Add inputs/outputs for swap identity
+		swapIdentityOps := node.getSwapIdentityOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, swapIdentityOps...)
+
+		// Add inputs for accept nft bid
+		acceptNftOps := node.getAcceptNFTOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, acceptNftOps...)
+
+		// Add inputs for bids on Buy Now NFTs
+		buyNowNftBidOps := node.getBuyNowNFTBidOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, buyNowNftBidOps...)
+
+		// Add inputs for update profile
+		updateProfileOps := node.getUpdateProfileOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, updateProfileOps...)
+
+		// Add inputs for DAO Coin Limit Orders
+		daoCoinLimitOrderOps := node.getDAOCoinLimitOrderOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, daoCoinLimitOrderOps...)
+
+		// Add operations for stake transactions
+		stakeOps := node.getStakeOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, stakeOps...)
+
+		// Add operations for unstake transactions
+		unstakeOps := node.getUnstakeOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, unstakeOps...)
+
+		// Add operations for unlock stake transactions
+		unlockStakeOps := node.getUnlockStakeOps(txn, utxoOpsForTxn, len(ops))
+		ops = append(ops, unlockStakeOps...)
+	}
+	return ops
 }
 
 func (node *Node) getBlockTransactionsWithHypersync(blockHeight uint64, blockHash *lib.BlockHash) []*types.Transaction {
