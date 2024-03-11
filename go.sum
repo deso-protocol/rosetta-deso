@@ -128,6 +128,7 @@ github.com/deso-protocol/go-deadlock v1.0.0 h1:mw0pHy/19zgC+JFBStuQt1+1Ehv5OKA5N
 github.com/deso-protocol/go-deadlock v1.0.0/go.mod h1:K0Wd2OV2x7ck7SMYDraWerpKjFKUeBqaFcwz21tmkb8=
 github.com/deso-protocol/go-merkle-tree v1.0.0 h1:9zkI5dQsITYy77s4kbTGPQmZnhQ+LsH/kRdL5l/Yzvg=
 github.com/deso-protocol/go-merkle-tree v1.0.0/go.mod h1:V/vbg/maaNv6G7zf9VVs645nLFx/jsO2L/awFB/S/ZU=
+github.com/dgraph-io/badger/v2 v2.2007.2 h1:EjjK0KqwaFMlPin1ajhP943VPENHJdEz1KLIegjaI3k=
 github.com/dgraph-io/badger/v2 v2.2007.2/go.mod h1:26P/7fbL4kUZVEVKLAKXkBXKOydDmM2p1e+NhhnBCAE=
 github.com/dgraph-io/badger/v3 v3.2103.0 h1:abkD2EnP3+6Tj8h5LI1y00dJ9ICKTIAzvG9WmZ8S2c4=
 github.com/dgraph-io/badger/v3 v3.2103.0/go.mod h1:GHMCYxuDWyzbHkh4k3yyg4PM61tJPFfEGSMbE3Vd5QE=

@@ -3,11 +3,12 @@ package deso
 import (
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
+	"testing"
+
 	"github.com/deso-protocol/core/lib"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/stretchr/testify/require"
-	"path/filepath"
-	"testing"
 )
 
 // This test is no longer needed, but we keep it here because it initializes a simplified node and index and might be
@@ -103,6 +104,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 		10,         // 10 milliseconds, augmented block view refresh interval millis
 		1500,       // 1500 milliseconds, pos block production interval milliseconds
 		30000,      // 30 seconds, pos timeout base duration milliseconds
+		10000,      // State syncer mempool txn sync limit
 	)
 	require.NoError(err)
 
