@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/deso-protocol/core/lib"
-	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -101,9 +101,8 @@ func TestUtxoOpsProblem(t *testing.T) {
 		30000,      // 30 seconds mempool back up time millis
 		1,          // 1, mempool fee estimator num mempool blocks
 		50,         // 50, mempool fee estimator num past blocks
-		10,         // 10 milliseconds, augmented block view refresh interval millis
+		10000,      // mempool max validation view connects
 		1500,       // 1500 milliseconds, pos block production interval milliseconds
-		30000,      // 30 seconds, pos timeout base duration milliseconds
 		10000,      // State syncer mempool txn sync limit
 	)
 	require.NoError(err)

@@ -169,7 +169,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	// Determine the network-wide feePerKB rate
-	feePerKB := mempoolView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
+	feePerKB := mempoolView.GetCurrentGlobalParamsEntry().MinimumNetworkFeeNanosPerKB
 	if feePerKB == 0 {
 		feePerKB = deso.MinFeeRateNanosPerKB
 	}
@@ -246,8 +246,8 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 	// Get the current max nonce expiration block height offset and current block height
 	currentMaxExpirationBlockHeightOffset := uint64(lib.DefaultMaxNonceExpirationBlockHeightOffset)
-	if mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset > 0 {
-		currentMaxExpirationBlockHeightOffset = mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset
+	if mempoolView.GetCurrentGlobalParamsEntry().MaxNonceExpirationBlockHeightOffset > 0 {
+		currentMaxExpirationBlockHeightOffset = mempoolView.GetCurrentGlobalParamsEntry().MaxNonceExpirationBlockHeightOffset
 	}
 	currentBlockHeight := uint64(s.node.GetBlockchain().BlockTip().Height)
 	// If the caller specified a expiration block height offset,
