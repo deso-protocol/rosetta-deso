@@ -8,7 +8,7 @@ import (
 
 	coreCmd "github.com/deso-protocol/core/cmd"
 	"github.com/deso-protocol/core/lib"
-	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v4"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -109,7 +109,7 @@ to quickly create a Cobra application.`,
 			panic("bestBlockHash is nil")
 		}
 
-		blockIndexByHash, err := lib.GetBlockIndex(chainDB, false /*bitcoinNodes*/)
+		blockIndexByHash, err := lib.GetBlockIndex(chainDB, false /*bitcoinNodes*/, config.Params)
 		if err != nil {
 			panic(fmt.Sprintf("Problem reading block index from db: %v", err))
 		}
