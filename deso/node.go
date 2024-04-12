@@ -84,9 +84,9 @@ func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.De
 	glog.V(1).Infof("_addSeedAddrs: Adding seed IPs from seed %s: %v\n", host, ipAddrs)
 
 	// Convert addresses to NetAddress'es.
-	netAddrs := make([]*wire.NetAddress, len(ipAddrs))
+	netAddrs := make([]*wire.NetAddressV2, len(ipAddrs))
 	for ii, ip := range ipAddrs {
-		netAddrs[ii] = wire.NewNetAddressTimestamp(
+		netAddrs[ii] = wire.NetAddressV2FromBytes(
 			// We initialize addresses with a
 			// randomly selected "last seen time" between 3
 			// and 7 days ago similar to what bitcoind does.
@@ -203,7 +203,13 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 
 	if node.Online && len(node.Config.ConnectIPs) == 0 {
 		for _, addr := range listeningAddrs {
-			netAddr := wire.NewNetAddress(&addr, 0)
+			netAddressLegacy := wire.NewNetAddress(&addr, 0)
+			netAddr := wire.NetAddressV2FromBytes(
+				netAddressLegacy.Timestamp,
+				netAddressLegacy.Services,
+				netAddressLegacy.IP,
+				netAddressLegacy.Port,
+			)
 			_ = desoAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
 		}
 
@@ -240,7 +246,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
 	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
-	node.EventManager.OnBlockConnected(node.handleBlockConnected)
+	node.EventManager.OnBlockCommitted(node.handleBlockCommitted)
 	node.EventManager.OnSnapshotCompleted(node.handleSnapshotCompleted)
 
 	minerCount := uint64(1)
@@ -275,6 +281,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.Config.MinerPublicKeys,
 		minerCount,
 		true,
+		10000, // peer connection refresh interval millis
 		node.Config.HyperSync,
 		node.Config.SyncType,
 		node.Config.MaxSyncBlockHeight,
@@ -306,10 +313,10 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		30000,      // 30 seconds mempool back up time millis
 		1,          // 1, mempool fee estimator num mempool blocks
 		50,         // 50, mempool fee estimator num past blocks
-		10,         // 10 milliseconds, augmented block view refresh interval millis
-		1500,       // 1500 milliseconds, pos block production interval milliseconds
-		30000,      // 30 seconds, pos timeout base duration milliseconds
+		100,        // 100, mempool max vlaidation view connects
+		10,         // 10 milliseconds, transaction validation refresh interval millis
 		10000,      // State syncer mempool txn sync limit
+		nil,
 	)
 	// Set the snapshot on the rosetta index.
 	node.Index.snapshot = node.GetBlockchain().Snapshot()

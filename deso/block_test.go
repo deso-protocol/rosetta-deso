@@ -43,7 +43,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
 	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
-	node.EventManager.OnBlockConnected(node.handleBlockConnected)
+	node.EventManager.OnBlockConnected(node.handleBlockCommitted)
 	node.EventManager.OnSnapshotCompleted(node.handleSnapshotCompleted)
 
 	minerCount := uint64(1)

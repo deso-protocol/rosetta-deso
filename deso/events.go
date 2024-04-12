@@ -502,7 +502,7 @@ func (node *Node) handleSnapshotCompleted() {
 	}
 }
 
-func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
+func (node *Node) handleBlockCommitted(event *lib.BlockEvent) {
 	node.Index.dbMutex.Lock()
 	defer node.Index.dbMutex.Unlock()
 	// We do some special logic if we have a snapshot.
@@ -520,9 +520,9 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 			}
 		}
 	}
-	glog.Infof("handleBlockConnected: height: %d", event.Block.Header.Height)
+	glog.Infof("handleBlockCommitted: height: %d", event.Block.Header.Height)
 	if event.UtxoView == nil {
-		glog.Infof("handleBlockConnected: utxoView is nil for height: %d", event.Block.Header.Height)
+		glog.Errorf("handleBlockCommitted: utxoView is nil for height: %d", event.Block.Header.Height)
 		return
 	}
 	currentTime := time.Now()
@@ -573,7 +573,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		balanceToPut := uint64(0)
 		if !validator.IsDeleted() {
 			if !validator.TotalStakeAmountNanos.IsUint64() {
-				glog.Errorf("handleBlockConnected: TotalStakeAmountNanos is not a uint64")
+				glog.Errorf("handleBlockCommitted: TotalStakeAmountNanos is not a uint64")
 				continue
 			}
 			balanceToPut = validator.TotalStakeAmountNanos.Uint64()
@@ -593,7 +593,7 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 		balanceToPut := uint64(0)
 		if !lockedStakeEntry.IsDeleted() {
 			if !lockedStakeEntry.LockedAmountNanos.IsUint64() {
-				glog.Errorf("handleBlockConnected: LockedAmountNanos is not a uint64")
+				glog.Errorf("handleBlockCommitted: LockedAmountNanos is not a uint64")
 				continue
 			}
 			balanceToPut = lockedStakeEntry.LockedAmountNanos.Uint64()
@@ -607,13 +607,13 @@ func (node *Node) handleBlockConnected(event *lib.BlockEvent) {
 
 	if err := node.Index.PutLockedStakeBalanceSnapshotWithWB(wb, event.Block.Header.Height, LockedStakeDESOBalance,
 		lockedStakeEntryBalances); err != nil {
-		glog.Errorf("handleBlockConnected: PutLockedStakeBalanceSnapshot: %v", err)
+		glog.Errorf("handleBlockCommitted: PutLockedStakeBalanceSnapshot: %v", err)
 	}
 
 	if err := wb.Flush(); err != nil {
 		glog.Errorf("Flush: %v", err)
 	}
-	glog.Infof("handleBlockConnected: Processed block %d in %v", event.Block.Header.Height, time.Since(currentTime))
+	glog.Infof("handleBlockCommitted: Processed block %d in %v", event.Block.Header.Height, time.Since(currentTime))
 }
 
 func (node *Node) handleTransactionConnected(event *lib.TransactionEvent) {
