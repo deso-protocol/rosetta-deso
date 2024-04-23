@@ -48,6 +48,7 @@ to quickly create a Cobra application.`,
 			[]*types.NetworkIdentifier{config.Network},
 			nil,
 			false,
+			"", // TODO: Figure out what we should supply for validation path.
 		)
 		if err != nil {
 			glog.Fatalf("unable to create new server asserter", "error", err)
