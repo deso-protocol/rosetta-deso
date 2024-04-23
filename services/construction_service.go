@@ -408,8 +408,13 @@ func (s *ConstructionAPIService) ConstructionHash(ctx context.Context, request *
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
+	var signedTx transactionMetadata
+	if err := json.Unmarshal(txnBytes, &signedTx); err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
 	txn := &lib.MsgDeSoTxn{}
-	if err = txn.FromBytes(txnBytes); err != nil {
+	if err = txn.FromBytes(signedTx.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
