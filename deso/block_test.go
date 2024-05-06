@@ -60,16 +60,18 @@ func TestUtxoOpsProblem(t *testing.T) {
 
 	node.Server, err, _ = lib.NewServer(
 		node.Config.Params,
-		nil,
-		nil,
-		[]string{},
-		node.chainDB,
-		nil,
+		node.Config.Regtest,
+		nil,          // listeners
+		nil,          // addrMgr
+		[]string{},   // connectIPs
+		node.chainDB, // db
+		nil,          // postgres
 		targetOutboundPeers,
 		maxInboundPeers,
-		[]string{},
+		[]string{}, // miner public keys
 		minerCount,
 		true,
+		10000, // peer connection refresh interval millis
 		false,
 		lib.NodeSyncTypeBlockSync,
 		0,
@@ -104,6 +106,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 		10000,      // mempool max validation view connects
 		1500,       // 1500 milliseconds, pos block production interval milliseconds
 		10000,      // State syncer mempool txn sync limit
+		nil,        // checkpoint syncing providers
 	)
 	require.NoError(err)
 
