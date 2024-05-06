@@ -271,6 +271,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	shouldRestart := false
 	node.Server, err, shouldRestart = lib.NewServer(
 		node.Config.Params,
+		node.Config.Regtest,
 		listeners,
 		desoAddrMgr,
 		connectIPs,
