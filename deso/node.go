@@ -310,13 +310,10 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
 		blsKeyStore,
-		3000000000, // 3GB max mempool size bytes
-		30000,      // 30 seconds mempool back up time millis
-		1,          // 1, mempool fee estimator num mempool blocks
-		50,         // 50, mempool fee estimator num past blocks
-		100,        // 100, mempool max vlaidation view connects
-		10,         // 10 milliseconds, transaction validation refresh interval millis
-		10000,      // State syncer mempool txn sync limit
+		30000, // 30 seconds mempool back up time millis
+		100,   // 100, mempool max vlaidation view connects
+		10,    // 10 milliseconds, transaction validation refresh interval millis
+		10000, // State syncer mempool txn sync limit
 		nil,
 	)
 	// Set the snapshot on the rosetta index.
