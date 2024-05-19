@@ -269,6 +269,12 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		}
 	}
 	shouldRestart := false
+	var checkpointSyncingProviders []string
+	if node.Config.Params.NetworkType == lib.NetworkType_MAINNET {
+		checkpointSyncingProviders = []string{"https://node.deso.org"}
+	} else {
+		checkpointSyncingProviders = []string{"https://test.deso.org"}
+	}
 	node.Server, err, shouldRestart = lib.NewServer(
 		node.Config.Params,
 		node.Config.Regtest,
@@ -314,7 +320,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		100,   // 100, mempool max vlaidation view connects
 		10,    // 10 milliseconds, transaction validation refresh interval millis
 		10000, // State syncer mempool txn sync limit
-		nil,
+		checkpointSyncingProviders,
 	)
 	// Set the snapshot on the rosetta index.
 	node.Index.snapshot = node.GetBlockchain().Snapshot()
