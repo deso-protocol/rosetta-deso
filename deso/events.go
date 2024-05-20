@@ -43,7 +43,6 @@ func (node *Node) handleSnapshotCompleted() {
 		// the snapshot height rather than the true genesis. This allows us to pass
 		// check:data without introducing complications for Coinbase.
 		snapshotBlockHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
-		writeBatchSize := uint64(1000)
 		statusLoggingInterval := uint64(1000)
 		{
 			// Iterate through every single public key and put a balance snapshot down
@@ -113,23 +112,16 @@ func (node *Node) handleSnapshotCompleted() {
 						balancesMap = make(map[lib.PublicKey]uint64)
 						currentBlockHeight++
 						currentCounter = 0
-						if currentBlockHeight%writeBatchSize == 0 {
-							flushTime := time.Now()
-							if err = wb.Flush(); err != nil {
-								return errors.Wrapf(err, "Problem flushing write batch")
-							}
-							glog.Infof("handleSnapshotCompleted: Flush took: %v", time.Since(flushTime))
-						}
 					}
 				}
 				if currentCounter > 0 {
 					node.Index.PutHypersyncBlockBalancesWithWB(wb, currentBlockHeight, DESOBalance, balancesMap)
-					flushTime := time.Now()
-					if err := wb.Flush(); err != nil {
-						return errors.Wrapf(err, "Problem flushing write batch")
-					}
-					glog.Infof("handleSnapshotCompleted: Flush took: %v", time.Since(flushTime))
 				}
+				flushTime := time.Now()
+				if err := wb.Flush(); err != nil {
+					return errors.Wrapf(err, "Problem flushing write batch")
+				}
+				glog.Infof("handleSnapshotCompleted: Flush took: %v", time.Since(flushTime))
 				return nil
 			})
 			if err != nil {
@@ -226,24 +218,17 @@ func (node *Node) handleSnapshotCompleted() {
 						balancesMap = make(map[lib.PublicKey]uint64)
 						currentBlockHeight++
 						currentCounter = 0
-						if currentBlockHeight%writeBatchSize == 0 {
-							flushTime := time.Now()
-							if err := wb.Flush(); err != nil {
-								return errors.Wrapf(err, "Problem flushing write batch")
-							}
-							glog.Infof("handleSnapshotCompleted: CC Locked balance Flush took: %v", time.Since(flushTime))
-						}
 					}
 				}
 				if currentCounter > 0 {
 					node.Index.PutHypersyncBlockBalancesWithWB(
 						wb, currentBlockHeight, CreatorCoinLockedBalance, balancesMap)
-					flushTime := time.Now()
-					if err := wb.Flush(); err != nil {
-						return errors.Wrapf(err, "Problem flushing write batch")
-					}
-					glog.Infof("handleSnapshotCompleted: CC Locked balance Flush took: %v", time.Since(flushTime))
 				}
+				flushTime := time.Now()
+				if err := wb.Flush(); err != nil {
+					return errors.Wrapf(err, "Problem flushing write batch")
+				}
+				glog.Infof("handleSnapshotCompleted: CC Locked balance Flush took: %v", time.Since(flushTime))
 				return nil
 			})
 			if err != nil {
@@ -345,24 +330,17 @@ func (node *Node) handleSnapshotCompleted() {
 						validatorEntryBalances = make(map[lib.PublicKey]uint64)
 						currentBlockHeight++
 						currentCounter = 0
-						if currentBlockHeight%writeBatchSize == 0 {
-							flushTime := time.Now()
-							if err = wb.Flush(); err != nil {
-								return errors.Wrapf(err, "Problem flushing write batch")
-							}
-							glog.Infof("handleSnapshotCompleted: Validator staked balance Flush took: %v", time.Since(flushTime))
-						}
 					}
 				}
 				if currentCounter > 0 {
 					node.Index.PutHypersyncBlockBalancesWithWB(
 						wb, currentBlockHeight, ValidatorStakedDESOBalance, validatorEntryBalances)
-					flushTime := time.Now()
-					if err := wb.Flush(); err != nil {
-						return errors.Wrapf(err, "Problem flushing write batch")
-					}
-					glog.Infof("handleSnapshotCompleted: Validator staked balance Flush took: %v", time.Since(flushTime))
 				}
+				flushTime := time.Now()
+				if err := wb.Flush(); err != nil {
+					return errors.Wrapf(err, "Problem flushing write batch")
+				}
+				glog.Infof("handleSnapshotCompleted: Validator staked balance Flush took: %v", time.Since(flushTime))
 				return nil
 			})
 			if err != nil {
@@ -461,24 +439,17 @@ func (node *Node) handleSnapshotCompleted() {
 						lockedStakerValidatorBalances = make(map[LockedStakeBalanceMapKey]uint64)
 						currentBlockHeight++
 						currentCounter = 0
-						if currentBlockHeight%writeBatchSize == 0 {
-							flushTime := time.Now()
-							if err = wb.Flush(); err != nil {
-								return errors.Wrapf(err, "Problem flushing write batch")
-							}
-							glog.Infof("handleSnapshotCompleted: Locked stake balance Flush took: %v", time.Since(flushTime))
-						}
 					}
 				}
 				if currentCounter > 0 {
 					node.Index.PutHypersyncBlockLockedStakeBalancesWithWB(wb, currentBlockHeight,
 						lockedStakerValidatorBalances, LockedStakeDESOBalance)
-					flushTime := time.Now()
-					if err := wb.Flush(); err != nil {
-						return errors.Wrapf(err, "Problem flushing write batch")
-					}
-					glog.Infof("handleSnapshotCompleted: Locked stake balance Flush took: %v", time.Since(flushTime))
 				}
+				flushTime := time.Now()
+				if err := wb.Flush(); err != nil {
+					return errors.Wrapf(err, "Problem flushing write batch")
+				}
+				glog.Infof("handleSnapshotCompleted: Locked stake balance Flush took: %v", time.Since(flushTime))
 				return nil
 			})
 			if err != nil {
