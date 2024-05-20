@@ -107,7 +107,10 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 	transactions := []*types.Transaction{}
 
 	// Fetch the Utxo ops for this block
-	utxoOpsForBlock, _ := node.Index.GetUtxoOps(block)
+	utxoOpsForBlock, err := node.Index.GetUtxoOps(block)
+	if err != nil {
+		glog.Error(errors.Wrapf(err, "GetTransactionsForConvertBlock: Problem fetching utxo ops for block"))
+	}
 
 	// TODO: Can we be smarter about this size somehow?
 	// 2x number of transactions feels like a good enough proxy for now
