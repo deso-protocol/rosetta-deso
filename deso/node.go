@@ -300,7 +300,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		minBlockUpdateInterval,
 		blockCypherAPIKey,
 		true,
-		lib.SnapshotBlockHeightPeriod,
+		lib.DefaultSnapshotEpochPeriodPoS,
 		node.Config.DataDirectory,
 		mempoolDumpDir,
 		disableNetworking,
