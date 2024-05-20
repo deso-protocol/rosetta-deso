@@ -26,10 +26,13 @@ func (node *Node) handleSnapshotCompleted() {
 	snapshot := node.Server.GetBlockchain().Snapshot()
 	if snapshot != nil &&
 		snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
+
+		writeBatchSize := uint64(100)
 		glog.Infof("handleSnapshotCompleted: handling snapshot with first snapshot block height %d "+
-			"and snapshot block height of %d",
+			"and snapshot block height of %d with batch size of %v",
 			snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight,
-			snapshot.CurrentEpochSnapshotMetadata.SnapshotBlockHeight)
+			snapshot.CurrentEpochSnapshotMetadata.SnapshotBlockHeight,
+			writeBatchSize)
 		// If we're at exactly the snapshot height then we've got some work to do.
 		// Output every single balance in the db to a special index. This will
 		// bootstrap Rosetta, and allow us to pass check:data. This is because we
@@ -44,8 +47,7 @@ func (node *Node) handleSnapshotCompleted() {
 		// the snapshot height rather than the true genesis. This allows us to pass
 		// check:data without introducing complications for Coinbase.
 		snapshotBlockHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
-		writeBatchSize := uint64(1000)
-		statusLoggingInterval := uint64(1000)
+		statusLoggingInterval := uint64(100)
 		{
 			// Iterate through every single public key and put a balance snapshot down
 			// for it for this block. We don't need to worry about ancestral records here
