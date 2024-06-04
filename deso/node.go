@@ -84,9 +84,9 @@ func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.De
 	glog.V(1).Infof("_addSeedAddrs: Adding seed IPs from seed %s: %v\n", host, ipAddrs)
 
 	// Convert addresses to NetAddress'es.
-	netAddrs := make([]*wire.NetAddressV2, len(ipAddrs))
+	netAddrs := make([]*wire.NetAddress, len(ipAddrs))
 	for ii, ip := range ipAddrs {
-		netAddrs[ii] = wire.NetAddressV2FromBytes(
+		netAddrs[ii] = wire.NewNetAddressTimestamp(
 			// We initialize addresses with a
 			// randomly selected "last seen time" between 3
 			// and 7 days ago similar to what bitcoind does.
@@ -203,13 +203,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 
 	if node.Online && len(node.Config.ConnectIPs) == 0 {
 		for _, addr := range listeningAddrs {
-			netAddressLegacy := wire.NewNetAddress(&addr, 0)
-			netAddr := wire.NetAddressV2FromBytes(
-				netAddressLegacy.Timestamp,
-				netAddressLegacy.Services,
-				netAddressLegacy.IP,
-				netAddressLegacy.Port,
-			)
+			netAddr := wire.NewNetAddress(&addr, 0)
 			_ = desoAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
 		}
 
