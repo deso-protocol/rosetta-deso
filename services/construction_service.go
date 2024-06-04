@@ -5,12 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/deso-protocol/core/lib"
 	merkletree "github.com/deso-protocol/go-merkle-tree"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"github.com/pkg/errors"
+	"math/big"
 	"reflect"
 	"strconv"
 )
@@ -377,9 +379,10 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 
 	// signature is in form of R || S
 	signatureBytes := request.Signatures[0].Bytes
-	if err = desoTxn.Signature.FromBytes(signatureBytes); err != nil {
-		return nil, wrapErr(ErrInvalidTransaction, err)
-	}
+	desoTxn.Signature.SetSignature(&btcec.Signature{
+		R: new(big.Int).SetBytes(signatureBytes[:32]),
+		S: new(big.Int).SetBytes(signatureBytes[32:64]),
+	})
 
 	signedTxnBytes, err := desoTxn.ToBytes(false)
 	if err != nil {
