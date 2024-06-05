@@ -8,7 +8,6 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	"math"
 	"time"
 )
 
@@ -155,8 +154,6 @@ func (node *Node) handleSnapshotCompleted() {
 				dbPrefixx := append([]byte{}, lib.Prefixes.PrefixCreatorDeSoLockedNanosCreatorPKID...)
 				opts := badger.DefaultIteratorOptions
 				opts.PrefetchValues = false
-				// Go in reverse order since a larger count is better.
-				opts.Reverse = true
 
 				// Set the prefix on the iterator options
 				opts.Prefix = dbPrefixx
@@ -178,12 +175,8 @@ func (node *Node) handleSnapshotCompleted() {
 				}
 				currentCounter := uint64(0)
 				currentTime := time.Now()
-				// Since we iterate backwards, the prefix must be bigger than all possible
-				// counts that could actually exist. We use eight bytes since the count is
-				// encoded as a 64-bit big-endian byte slice, which will be eight bytes long.
 				maxBigEndianUint64Bytes := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-				prefix := append(dbPrefixx, maxBigEndianUint64Bytes...)
-				for it.Seek(prefix); it.ValidForPrefix(dbPrefixx); it.Next() {
+				for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
 					rawKey := it.Item().Key()
 
 					// Strip the prefix off the key and check its length. If it contains
@@ -273,8 +266,6 @@ func (node *Node) handleSnapshotCompleted() {
 				dbPrefixx := append([]byte{}, lib.Prefixes.PrefixValidatorByStatusAndStakeAmount...)
 				opts := badger.DefaultIteratorOptions
 				opts.PrefetchValues = false
-				// Go in reverse order since a larger count is better.
-				opts.Reverse = true
 
 				// Set prefix on iterator
 				opts.Prefix = dbPrefixx
@@ -302,9 +293,7 @@ func (node *Node) handleSnapshotCompleted() {
 				// this: Prefix, <Status uint8>, <TotalStakeAmountNanos *uint256.Int>, <ValidatorPKID [33]byte> -> nil
 				// So we need to chop off the status to pull out the total stake amount nanos and the validator PKID
 				maxUint256 := lib.FixedWidthEncodeUint256(lib.MaxUint256)
-				prefix := append(dbPrefixx, lib.EncodeUint8(math.MaxUint8)...)
-				prefix = append(prefix, maxUint256...)
-				for it.Seek(prefix); it.ValidForPrefix(dbPrefixx); it.Next() {
+				for it.Seek(dbPrefixx); it.ValidForPrefix(dbPrefixx); it.Next() {
 					rawKey := it.Item().Key()
 
 					// Strip the prefix and status off the key and check its length. It
@@ -396,8 +385,6 @@ func (node *Node) handleSnapshotCompleted() {
 				dbPrefixx := append([]byte{}, lib.Prefixes.PrefixLockedStakeByValidatorAndStakerAndLockedAt...)
 				opts := badger.DefaultIteratorOptions
 				opts.PrefetchValues = true
-				// Go in reverse order since a larger count is better.
-				opts.Reverse = true
 
 				// Set prefix on iterator
 				opts.Prefix = dbPrefixx
