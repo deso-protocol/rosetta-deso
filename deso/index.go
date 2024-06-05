@@ -142,11 +142,11 @@ func (index *RosettaIndex) PutHypersyncBlockBalancesWithWB(
 		glog.Errorf("PutHypersyncBlockBalancesWithWB: error gob encoding balances: %v", err)
 		return
 	}
-	glog.Infof("Time to gob encode %d balances: %v", len(balances), time.Since(currentTime))
+	glog.V(4).Infof("Time to gob encode %d balances: %v", len(balances), time.Since(currentTime))
 	if err := wb.Set(hypersyncHeightToBlockKey(blockHeight, balanceType), blockBytes.Bytes()); err != nil {
 		glog.Error(errors.Wrapf(err, "PutHypersyncBlockBalancesWithWB: Problem putting block: Error:"))
 	}
-	glog.Infof("Time to put %d balances: %v", len(balances), time.Since(putBlockStartTime))
+	glog.V(4).Infof("Time to put %d balances: %v", len(balances), time.Since(putBlockStartTime))
 }
 
 func (index *RosettaIndex) PutHypersyncBlockLockedStakeBalancesWithWB(
@@ -162,11 +162,11 @@ func (index *RosettaIndex) PutHypersyncBlockLockedStakeBalancesWithWB(
 		glog.Errorf("PutHypersyncBlockLockedStakeBalancesWithDB: error gob encoding locked stake entries: %v", err)
 		return
 	}
-	glog.Infof("Time to gob encode %d locked stake entries: %v", len(stakeEntries), time.Since(currentTime))
+	glog.V(4).Infof("Time to gob encode %d locked stake entries: %v", len(stakeEntries), time.Since(currentTime))
 	if err := wb.Set(hypersyncHeightToBlockKey(blockHeight, balanceType), blockBytes.Bytes()); err != nil {
 		glog.Error(errors.Wrapf(err, "PutHypersyncBlockLockedStakeBalancesWithWB: Problem putting block: Error:"))
 	}
-	glog.Infof("Time to put %d locked stake entries: %v", len(stakeEntries), time.Since(putBlockStartTime))
+	glog.V(4).Infof("Time to put %d locked stake entries: %v", len(stakeEntries), time.Since(putBlockStartTime))
 }
 
 func (index *RosettaIndex) GetHypersyncBlockBalances(blockHeight uint64) (
