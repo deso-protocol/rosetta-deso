@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/deso-protocol/go-deadlock"
-	"github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v3"
 
 	"github.com/btcsuite/btcd/addrmgr"
 	"github.com/btcsuite/btcd/wire"
