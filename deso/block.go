@@ -53,17 +53,21 @@ func (node *Node) GetBlock(hash string) *types.Block {
 
 	// If we've hypersynced the chain, we do something special. We need to return "fake genesis" blocks that
 	// consolidates all balances up to this point. See commentary in events.go for more detail on how this works.
-	snapshot := node.Server.GetBlockchain().Snapshot()
-	if snapshot != nil && snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 &&
-		height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+	if node.Config.SyncType == lib.NodeSyncTypeHyperSync ||
+		node.Config.SyncType == lib.NodeSyncTypeHyperSyncArchival {
 
-		transactions := node.getBlockTransactionsWithHypersync(height, blockHash)
-		// We return a mega-fake-genesis block with the hypersync account balances bootstrapped via output operations.
-		return &types.Block{
-			BlockIdentifier:       blockIdentifier,
-			ParentBlockIdentifier: parentBlockIdentifier,
-			Timestamp:             int64(blockNode.Header.TstampNanoSecs) / 1e6, // Convert nanoseconds to milliseconds
-			Transactions:          transactions,
+		snapshot := node.Server.GetBlockchain().Snapshot()
+		if snapshot != nil && snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 &&
+			height <= snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight {
+
+			transactions := node.getBlockTransactionsWithHypersync(height, blockHash)
+			// We return a mega-fake-genesis block with the hypersync account balances bootstrapped via output operations.
+			return &types.Block{
+				BlockIdentifier:       blockIdentifier,
+				ParentBlockIdentifier: parentBlockIdentifier,
+				Timestamp:             int64(blockNode.Header.TstampNanoSecs) / 1e6, // Convert nanoseconds to milliseconds
+				Transactions:          transactions,
+			}
 		}
 	}
 

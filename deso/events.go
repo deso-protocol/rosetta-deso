@@ -466,7 +466,9 @@ func (node *Node) handleBlockCommitted(event *lib.BlockEvent) {
 	// We do some special logic if we have a snapshot.
 	if node.Server != nil {
 		snapshot := node.Server.GetBlockchain().Snapshot()
-		if snapshot != nil &&
+		if (node.Config.SyncType == lib.NodeSyncTypeHyperSync ||
+			node.Config.SyncType == lib.NodeSyncTypeHyperSyncArchival) &&
+			snapshot != nil &&
 			snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight != 0 {
 
 			firstSnapshotHeight := snapshot.CurrentEpochSnapshotMetadata.FirstSnapshotBlockHeight
