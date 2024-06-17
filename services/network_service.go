@@ -74,8 +74,8 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.NetworkRequest) (*types.NetworkOptionsResponse, *types.Error) {
 	return &types.NetworkOptionsResponse{
 		Version: &types.Version{
-			RosettaVersion: "1.4.10",
-			NodeVersion:    "1.3.0",
+			RosettaVersion: "4.0.0",
+			NodeVersion:    "4.0.0",
 		},
 		Allow: &types.Allow{
 			OperationStatuses: []*types.OperationStatus{
