@@ -3,11 +3,12 @@ package deso
 import (
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
+	"testing"
+
 	"github.com/deso-protocol/core/lib"
 	"github.com/dgraph-io/badger/v3"
 	"github.com/stretchr/testify/require"
-	"path/filepath"
-	"testing"
 )
 
 // This test is no longer needed, but we keep it here because it initializes a simplified node and index and might be
@@ -37,12 +38,12 @@ func TestUtxoOpsProblem(t *testing.T) {
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
 	require.NoError(err)
-	node.Index = NewIndex(rosettaIndex)
+	node.Index = NewIndex(rosettaIndex, node.chainDB)
 
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
 	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
-	node.EventManager.OnBlockConnected(node.handleBlockConnected)
+	node.EventManager.OnBlockConnected(node.handleBlockCommitted)
 	node.EventManager.OnSnapshotCompleted(node.handleSnapshotCompleted)
 
 	minerCount := uint64(1)
@@ -59,16 +60,18 @@ func TestUtxoOpsProblem(t *testing.T) {
 
 	node.Server, err, _ = lib.NewServer(
 		node.Config.Params,
-		nil,
-		nil,
-		[]string{},
-		node.chainDB,
-		nil,
+		node.Config.Regtest,
+		nil,          // listeners
+		nil,          // addrMgr
+		[]string{},   // connectIPs
+		node.chainDB, // db
+		nil,          // postgres
 		targetOutboundPeers,
 		maxInboundPeers,
-		[]string{},
+		[]string{}, // miner public keys
 		minerCount,
 		true,
+		10000, // peer connection refresh interval millis
 		false,
 		lib.NodeSyncTypeBlockSync,
 		0,
@@ -95,6 +98,12 @@ func TestUtxoOpsProblem(t *testing.T) {
 		node.Config.ForceChecksum,
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
+		nil,   // TODO: support for rosetta as a validator?
+		30000, // 30 seconds mempool back up time millis
+		10000, // mempool max validation view connects
+		1500,  // 1500 milliseconds, pos block production interval milliseconds
+		10000, // State syncer mempool txn sync limit
+		nil,   // checkpoint syncing providers
 	)
 	require.NoError(err)
 

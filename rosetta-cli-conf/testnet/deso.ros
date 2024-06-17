@@ -123,11 +123,20 @@ return_funds(10){
     transfer_dry_run.network = {"network":"TESTNET", "blockchain":"DeSo"};
     currency = {"symbol":"DESO", "decimals":9};
 
+    // Hardcode the recipient to be the one who sent everyone their money
+    recipient = {
+        "account_identifier": {
+            "address": "tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF"
+        }
+    };
+
     // We look for a sender that is able to pay the
     // max_fee_amount + min_utxo size (reserved_amount is max_fee_amount + min_utxo size).
+    // We don't want 
     max_fee_amount = "1200";
     reserved_amount = "1800";
     sender = find_balance({
+      "not_account_identifier":[{{recipient.account_identifier}}],
       "minimum_balance":{
         "value": {{reserved_amount}},
         "currency": {{currency}}
@@ -140,8 +149,6 @@ return_funds(10){
     print_message({
       "recipient_amount":{{recipient_amount}}
     });
-
-    recipient = {"address": "tBCKWCLyYKGa4Lb4buEsMGYePEWcaVAqcunvDVD4zVDcH8NoB5EgPF"};
 
     sender_amount = 0 - {{sender.balance.value}};
     transfer_dry_run.confirmation_depth = "1";
@@ -156,7 +163,7 @@ return_funds(10){
       {
         "operation_identifier":{"index":1},
         "type":"OUTPUT",
-        "account":{{recipient}},
+        "account":{{recipient.account_identifier}},
         "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
       }
     ];
@@ -188,7 +195,7 @@ return_funds(10){
       {
         "operation_identifier":{"index":1},
         "type":"OUTPUT",
-        "account":{{recipient}},
+        "account":{{recipient.account_identifier}},
         "amount":{"value":{{recipient_amount}},"currency":{{currency}}}
       }
     ];

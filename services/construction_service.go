@@ -160,7 +160,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	var options preprocessOptions
-	if err := types.UnmarshalMap(request.Options, &options); err != nil {
+	if err = types.UnmarshalMap(request.Options, &options); err != nil {
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
@@ -169,7 +169,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 
 	// Determine the network-wide feePerKB rate
-	feePerKB := mempoolView.GlobalParamsEntry.MinimumNetworkFeeNanosPerKB
+	feePerKB := mempoolView.GetCurrentGlobalParamsEntry().MinimumNetworkFeeNanosPerKB
 	if feePerKB == 0 {
 		feePerKB = deso.MinFeeRateNanosPerKB
 	}
@@ -246,8 +246,8 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 	}
 	// Get the current max nonce expiration block height offset and current block height
 	currentMaxExpirationBlockHeightOffset := uint64(lib.DefaultMaxNonceExpirationBlockHeightOffset)
-	if mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset > 0 {
-		currentMaxExpirationBlockHeightOffset = mempoolView.GlobalParamsEntry.MaxNonceExpirationBlockHeightOffset
+	if mempoolView.GetCurrentGlobalParamsEntry().MaxNonceExpirationBlockHeightOffset > 0 {
+		currentMaxExpirationBlockHeightOffset = mempoolView.GetCurrentGlobalParamsEntry().MaxNonceExpirationBlockHeightOffset
 	}
 	currentBlockHeight := uint64(s.node.GetBlockchain().BlockTip().Height)
 	// If the caller specified a expiration block height offset,
@@ -411,8 +411,13 @@ func (s *ConstructionAPIService) ConstructionHash(ctx context.Context, request *
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
+	var signedTx transactionMetadata
+	if err := json.Unmarshal(txnBytes, &signedTx); err != nil {
+		return nil, wrapErr(ErrInvalidTransaction, err)
+	}
+
 	txn := &lib.MsgDeSoTxn{}
-	if err = txn.FromBytes(txnBytes); err != nil {
+	if err = txn.FromBytes(signedTx.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
 
@@ -462,8 +467,9 @@ func (s *ConstructionAPIService) ConstructionParse(ctx context.Context, request 
 	}
 
 	for _, output := range desoTxn.TxOutputs {
-		// Skip the change output when NOT using legacy utxo selection
-		if !metadata.LegacyUTXOSelection && reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) {
+		// Skip the change output when NOT using legacy utxo selection AND it's not a balance model transaction
+		if !metadata.LegacyUTXOSelection && reflect.DeepEqual(output.PublicKey, desoTxn.PublicKey) &&
+			desoTxn.TxnNonce == nil {
 			continue
 		}
 
@@ -521,7 +527,6 @@ func (s *ConstructionAPIService) ConstructionSubmit(ctx context.Context, request
 	if err = desoTxn.FromBytes(txn.Transaction); err != nil {
 		return nil, wrapErr(ErrInvalidTransaction, err)
 	}
-
 	if err := s.node.VerifyAndBroadcastTransaction(desoTxn); err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}

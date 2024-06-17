@@ -47,7 +47,9 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	}
 
 	blockchain := s.node.GetBlockchain()
-	*syncStatus.CurrentIndex = int64(blockchain.BlockTip().Height)
+	committedTip, _ := blockchain.GetCommittedTip()
+
+	*syncStatus.CurrentIndex = int64(committedTip.Height)
 	*syncStatus.TargetIndex = int64(blockchain.HeaderTip().Height)
 	*syncStatus.Stage = blockchain.ChainState().String()
 

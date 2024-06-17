@@ -3,8 +3,6 @@ package deso
 import (
 	"flag"
 	"fmt"
-	"github.com/deso-protocol/go-deadlock"
-	"github.com/dgraph-io/badger/v3"
 	"math/rand"
 	"net"
 	"os"
@@ -13,6 +11,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/deso-protocol/go-deadlock"
+	"github.com/dgraph-io/badger/v3"
 
 	"github.com/btcsuite/btcd/addrmgr"
 	"github.com/btcsuite/btcd/wire"
@@ -234,12 +235,12 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rosettaIndexOpts := lib.PerformanceBadgerOptions(rosettaIndexDir)
 	rosettaIndexOpts.ValueDir = rosettaIndexDir
 	rosettaIndex, err := badger.Open(rosettaIndexOpts)
-	node.Index = NewIndex(rosettaIndex)
+	node.Index = NewIndex(rosettaIndex, node.chainDB)
 
 	// Listen to transaction and block events so we can fill RosettaIndex with relevant data
 	node.EventManager = lib.NewEventManager()
 	node.EventManager.OnTransactionConnected(node.handleTransactionConnected)
-	node.EventManager.OnBlockConnected(node.handleBlockConnected)
+	node.EventManager.OnBlockCommitted(node.handleBlockCommitted)
 	node.EventManager.OnSnapshotCompleted(node.handleSnapshotCompleted)
 
 	minerCount := uint64(1)
@@ -254,9 +255,23 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
+	var blsKeyStore *lib.BLSKeystore
+	if node.Config.PosValidatorSeed != "" {
+		blsKeyStore, err = lib.NewBLSKeystore(node.Config.PosValidatorSeed)
+		if err != nil {
+			panic(err)
+		}
+	}
 	shouldRestart := false
+	var checkpointSyncingProviders []string
+	if node.Config.Params.NetworkType == lib.NetworkType_MAINNET {
+		checkpointSyncingProviders = []string{"https://node.deso.org"}
+	} else {
+		checkpointSyncingProviders = []string{"https://test.deso.org"}
+	}
 	node.Server, err, shouldRestart = lib.NewServer(
 		node.Config.Params,
+		node.Config.Regtest,
 		listeners,
 		desoAddrMgr,
 		connectIPs,
@@ -267,6 +282,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.Config.MinerPublicKeys,
 		minerCount,
 		true,
+		10000, // peer connection refresh interval millis
 		node.Config.HyperSync,
 		node.Config.SyncType,
 		node.Config.MaxSyncBlockHeight,
@@ -278,14 +294,14 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		minBlockUpdateInterval,
 		blockCypherAPIKey,
 		true,
-		lib.SnapshotBlockHeightPeriod,
+		lib.DefaultSnapshotEpochPeriodPoS,
 		node.Config.DataDirectory,
 		mempoolDumpDir,
 		disableNetworking,
 		readOnly,
 		false,
 		nil,
-		"",
+		node.Config.BlockProducerSeed,
 		[]string{},
 		0,
 		node.EventManager,
@@ -293,7 +309,15 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		node.Config.ForceChecksum,
 		"",
 		lib.HypersyncDefaultMaxQueueSize,
+		blsKeyStore,
+		30000, // 30 seconds mempool back up time millis
+		100,   // 100, mempool max vlaidation view connects
+		10,    // 10 milliseconds, transaction validation refresh interval millis
+		10000, // State syncer mempool txn sync limit
+		checkpointSyncingProviders,
 	)
+	// Set the snapshot on the rosetta index.
+	node.Index.snapshot = node.GetBlockchain().Snapshot()
 	if err != nil {
 		if shouldRestart {
 			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+
@@ -358,7 +382,6 @@ func (node *Node) Stop() {
 	if snap != nil {
 		glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Stopping snapshot..."))
 		snap.Stop()
-		node.closeDb(snap.SnapshotDb, "snapshot")
 		glog.Infof(lib.CLog(lib.Yellow, "Node.Stop: Snapshot successfully stopped."))
 	}
 

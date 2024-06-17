@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/deso-protocol/rosetta-deso/deso"
+	"math"
 	"strconv"
+	"strings"
 
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
@@ -52,10 +54,7 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 	blockchain := node.GetBlockchain()
 	currentBlock := blockchain.BlockTip()
 
-	dbView, err := lib.NewUtxoView(blockchain.DB(), node.Params, nil, node.Server.GetBlockchain().Snapshot(), nil)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
+	dbView := lib.NewUtxoView(blockchain.DB(), node.Params, nil, node.Server.GetBlockchain().Snapshot(), nil)
 
 	mempoolView, err := node.GetMempool().GetAugmentedUniversalView()
 	if err != nil {
@@ -85,6 +84,78 @@ func accountBalanceCurrent(node *deso.Node, account *types.AccountIdentifier) (*
 		if mempoolProfileEntry != nil {
 			mempoolBalance = mempoolProfileEntry.CreatorCoinEntry.DeSoLockedNanos
 		}
+	} else if account.SubAccount.Address == deso.ValidatorEntry {
+
+		var dbValidatorEntry *lib.ValidatorEntry
+		dbValidatorPKID := dbView.GetPKIDForPublicKey(publicKeyBytes).PKID
+		dbValidatorEntry, err = dbView.GetValidatorByPKID(dbValidatorPKID)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+		if dbValidatorEntry != nil {
+			if !dbValidatorEntry.TotalStakeAmountNanos.IsUint64() {
+				return nil, wrapErr(ErrDeSo, fmt.Errorf("TotalStakeAmountNanos is not a uint64"))
+			}
+			dbBalance = dbValidatorEntry.TotalStakeAmountNanos.Uint64()
+		}
+
+		mempoolValidatorPKID := mempoolView.GetPKIDForPublicKey(publicKeyBytes).PKID
+
+		var mempoolValidatorEntry *lib.ValidatorEntry
+		mempoolValidatorEntry, err = mempoolView.GetValidatorByPKID(mempoolValidatorPKID)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+		if mempoolValidatorEntry != nil {
+			if !mempoolValidatorEntry.TotalStakeAmountNanos.IsUint64() {
+				return nil, wrapErr(ErrDeSo, fmt.Errorf("TotalStakeAmountNanos is not a uint64"))
+			}
+			mempoolBalance = mempoolValidatorEntry.TotalStakeAmountNanos.Uint64()
+		}
+	} else if strings.HasPrefix(account.SubAccount.Address, deso.LockedStakeEntry) {
+		// Pull out the validator PKID
+		var validatorPKID *lib.PKID
+		validatorPKID, err = node.GetValidatorPKIDFromSubAccountIdentifier(account.SubAccount)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+
+		dbStakerPKID := dbView.GetPKIDForPublicKey(publicKeyBytes).PKID
+		dbLockedStakeEntries, err := dbView.GetLockedStakeEntriesInRange(validatorPKID, dbStakerPKID, 0, math.MaxUint64)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+		dbRunningBalance := uint64(0)
+		for _, dbLockedStakeEntry := range dbLockedStakeEntries {
+			if !dbLockedStakeEntry.LockedAmountNanos.IsUint64() {
+				return nil, wrapErr(ErrDeSo, fmt.Errorf("AmountNanos is not a uint64"))
+			}
+			dbRunningBalance, err = lib.SafeUint64().Add(dbRunningBalance, dbLockedStakeEntry.LockedAmountNanos.Uint64())
+			if err != nil {
+				return nil, wrapErr(ErrDeSo, err)
+			}
+		}
+		dbBalance = dbRunningBalance
+
+		mempoolStakerPKID := mempoolView.GetPKIDForPublicKey(publicKeyBytes).PKID
+
+		mempoolStakeEntries, err := mempoolView.GetLockedStakeEntriesInRange(validatorPKID, mempoolStakerPKID, 0, math.MaxUint64)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+		mempoolRunningBalance := uint64(0)
+		for _, mempoolStakeEntry := range mempoolStakeEntries {
+			if !mempoolStakeEntry.LockedAmountNanos.IsUint64() {
+				return nil, wrapErr(ErrDeSo, fmt.Errorf("AmountNanos is not a uint64"))
+			}
+			mempoolRunningBalance, err = lib.SafeUint64().Add(mempoolRunningBalance, mempoolStakeEntry.LockedAmountNanos.Uint64())
+			if err != nil {
+				return nil, wrapErr(ErrDeSo, err)
+			}
+		}
+		mempoolBalance = mempoolRunningBalance
+	} else {
+		return nil, wrapErr(ErrDeSo, fmt.Errorf("Invalid SubAccount"))
 	}
 
 	block := &types.BlockIdentifier{
@@ -141,12 +212,24 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 	publicKey := lib.NewPublicKey(publicKeyBytes)
-
+	// We assume that address is a PKID for certain subaccounts. Parsing the bytes
+	// as a NewPKID will give us the appropriate subaccount.
+	pkid := lib.NewPKID(publicKeyBytes)
 	var balance uint64
 	if account.SubAccount == nil {
-		balance = node.Index.GetBalanceSnapshot(false, publicKey, blockHeight)
+		balance = node.Index.GetBalanceSnapshot(deso.DESOBalance, publicKey, blockHeight)
 	} else if account.SubAccount.Address == deso.CreatorCoin {
-		balance = node.Index.GetBalanceSnapshot(true, publicKey, blockHeight)
+		balance = node.Index.GetBalanceSnapshot(deso.CreatorCoinLockedBalance, publicKey, blockHeight)
+	} else if strings.HasPrefix(account.SubAccount.Address, deso.ValidatorEntry) {
+		balance = node.Index.GetBalanceSnapshot(deso.ValidatorStakedDESOBalance, publicKey, blockHeight)
+	} else if strings.HasPrefix(account.SubAccount.Address, deso.LockedStakeEntry) {
+		validatorPKID, err := node.GetValidatorPKIDFromSubAccountIdentifier(account.SubAccount)
+		if err != nil {
+			return nil, wrapErr(ErrDeSo, err)
+		}
+		balance = node.Index.GetLockedStakeBalanceSnapshot(deso.LockedStakeDESOBalance, pkid, validatorPKID, 0, blockHeight)
+	} else {
+		return nil, wrapErr(ErrDeSo, fmt.Errorf("Invalid SubAccount"))
 	}
 
 	//fmt.Printf("height: %v, addr (cc): %v, bal: %v\n", desoBlock.Header.Height, lib.PkToStringTestnet(publicKeyBytes), balance)
@@ -180,16 +263,14 @@ func (s *AccountAPIService) AccountCoins(
 		return nil, wrapErr(ErrInvalidPublicKey, err)
 	}
 
-	utxoView, err := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, s.node.Server.GetBlockchain().Snapshot(), nil)
-	if err != nil {
-		return nil, wrapErr(ErrDeSo, err)
-	}
+	utxoView := lib.NewUtxoView(blockchain.DB(), s.node.Params, nil, s.node.Server.GetBlockchain().Snapshot(), nil)
 
 	utxoEntries, err := utxoView.GetUnspentUtxoEntrysForPublicKey(publicKeyBytes)
 	if err != nil {
 		return nil, wrapErr(ErrDeSo, err)
 	}
 
+	// TODO: Update for balance model.
 	coins := []*types.Coin{}
 
 	for _, utxoEntry := range utxoEntries {
