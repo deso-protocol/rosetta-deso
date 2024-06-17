@@ -2,7 +2,7 @@ FROM alpine:latest AS rosetta
 
 RUN apk update && apk upgrade && apk add --update go gcc g++ vips-dev
 
-COPY --from=golang:1.22-alpine /usr/local/go/ /usr/local/go/
+COPY --from=golang:1.20-alpine /usr/local/go/ /usr/local/go/
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /deso/src
