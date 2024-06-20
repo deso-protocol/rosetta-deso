@@ -540,7 +540,7 @@ type partialAccountIdentifier struct {
 
 func squashOperations(ops []*types.Operation) []*types.Operation {
 	opMap := make(map[partialAccountIdentifier]int64, len(ops))
-	var squashedOps []*types.Operation
+	squashedOps := []*types.Operation{}
 	nextOp := int64(0)
 
 	for _, op := range ops {
