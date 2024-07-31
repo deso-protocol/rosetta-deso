@@ -192,7 +192,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	go node.listenToRestart()
 
 	if node.Config.Regtest {
-		node.Params.EnableRegtest()
+		node.Params.EnableRegtest(node.Config.RegtestAccelerated)
 	}
 	lib.GlobalDeSoParams = *node.Params
 

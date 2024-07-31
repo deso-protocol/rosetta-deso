@@ -88,7 +88,7 @@ to quickly create a Cobra application.`,
 		// DeserializeBlockNode.
 		// Check for regtest mode
 		if config.Regtest {
-			config.Params.EnableRegtest()
+			config.Params.EnableRegtest(config.RegtestAccelerated)
 		}
 		lib.GlobalDeSoParams = *config.Params
 
