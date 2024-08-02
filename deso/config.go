@@ -25,6 +25,7 @@ type Config struct {
 	BlockProducerSeed      string
 	PosValidatorSeed       string
 	Regtest                bool
+	RegtestAccelerated     bool
 	ConnectIPs             []string
 	HyperSync              bool
 	SyncType               lib.NodeSyncType
@@ -77,6 +78,7 @@ func LoadConfig() (*Config, error) {
 	result.BlockProducerSeed = viper.GetString("block-producer-seed")
 	result.PosValidatorSeed = viper.GetString("pos-validator-seed")
 	result.Regtest = viper.GetBool("regtest")
+	result.RegtestAccelerated = viper.GetBool("regtest-accelerated")
 	result.ConnectIPs = viper.GetStringSlice("connect-ips")
 
 	result.HyperSync = viper.GetBool("hypersync")
