@@ -316,17 +316,12 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		10000, // State syncer mempool txn sync limit
 		checkpointSyncingProviders,
 	)
-	// Set the snapshot on the rosetta index.
-	node.Index.snapshot = node.GetBlockchain().Snapshot()
 	if err != nil {
-		if shouldRestart {
-			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+
-				"is true. Node will be erased and resynced. Error: (%v)", err)))
-			node.nodeMessageChan <- lib.NodeErase
-			return
-		}
+		glog.Errorf("Problem creating server: (shouldRestart: %v): %v", shouldRestart, err)
 		panic(err)
 	}
+	// Set the snapshot on the rosetta index.
+	node.Index.snapshot = node.GetBlockchain().Snapshot()
 
 	if !shouldRestart {
 		node.Server.Start()
