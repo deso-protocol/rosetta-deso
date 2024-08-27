@@ -30,13 +30,15 @@ func (s *NetworkAPIService) NetworkList(ctx context.Context, request *types.Meta
 
 func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.NetworkRequest) (*types.NetworkStatusResponse, *types.Error) {
 	peers := []*types.Peer{}
-	for _, peer := range s.node.GetConnectionManager().GetAllPeers() {
-		peers = append(peers, &types.Peer{
-			PeerID: strconv.FormatUint(peer.ID, 10),
-			Metadata: map[string]interface{}{
-				"address": peer.Address(),
-			},
-		})
+	if s.node != nil && s.node.GetConnectionManager() != nil {
+		for _, peer := range s.node.GetConnectionManager().GetAllPeers() {
+			peers = append(peers, &types.Peer{
+				PeerID: strconv.FormatUint(peer.ID, 10),
+				Metadata: map[string]interface{}{
+					"address": peer.Address(),
+				},
+			})
+		}
 	}
 
 	syncStatus := &types.SyncStatus{
@@ -58,13 +60,30 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	*syncStatus.Synced = *syncStatus.Stage == lib.SyncStateFullyCurrent.String() ||
 		(isSyncing && (*syncStatus.TargetIndex-*syncStatus.CurrentIndex) <= 3)
 
-	genesisBlock := s.node.GetBlockAtHeight(0)
-	currentBlock := s.node.GetBlockAtHeight(*syncStatus.CurrentIndex)
+	bestChain := blockchain.BestChain()
+	if len(bestChain) == 0 {
+		return nil, &types.Error{
+			Code:    500,
+			Message: "No blocks in best chain",
+		}
+	}
+	genesisBlockNode := blockchain.BestChain()[0]
+	genesisBlockIdentifier := &types.BlockIdentifier{
+		Index: int64(0),
+		Hash:  genesisBlockNode.Hash.String(),
+	}
+
+	currentBlockIdentifier := &types.BlockIdentifier{
+		Index: int64(committedTip.Height),
+		Hash:  committedTip.Hash.String(),
+	}
+
+	currentBlockTimestamp := int64(committedTip.Header.TstampNanoSecs) / 1e6 // Convert nanoseconds to milliseconds
 
 	return &types.NetworkStatusResponse{
-		CurrentBlockIdentifier: currentBlock.BlockIdentifier,
-		CurrentBlockTimestamp:  currentBlock.Timestamp,
-		GenesisBlockIdentifier: genesisBlock.BlockIdentifier,
+		CurrentBlockIdentifier: currentBlockIdentifier,
+		CurrentBlockTimestamp:  currentBlockTimestamp,
+		GenesisBlockIdentifier: genesisBlockIdentifier,
 		Peers:                  peers,
 		SyncStatus:             syncStatus,
 	}, nil
@@ -74,8 +93,8 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.NetworkRequest) (*types.NetworkOptionsResponse, *types.Error) {
 	return &types.NetworkOptionsResponse{
 		Version: &types.Version{
-			RosettaVersion: "4.0.0",
-			NodeVersion:    "4.0.0",
+			RosettaVersion: "4.0.3",
+			NodeVersion:    "4.0.3",
 		},
 		Allow: &types.Allow{
 			OperationStatuses: []*types.OperationStatus{
