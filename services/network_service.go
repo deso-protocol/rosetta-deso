@@ -30,13 +30,15 @@ func (s *NetworkAPIService) NetworkList(ctx context.Context, request *types.Meta
 
 func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.NetworkRequest) (*types.NetworkStatusResponse, *types.Error) {
 	peers := []*types.Peer{}
-	for _, peer := range s.node.GetConnectionManager().GetAllPeers() {
-		peers = append(peers, &types.Peer{
-			PeerID: strconv.FormatUint(peer.ID, 10),
-			Metadata: map[string]interface{}{
-				"address": peer.Address(),
-			},
-		})
+	if s.node != nil && s.node.GetConnectionManager() != nil {
+		for _, peer := range s.node.GetConnectionManager().GetAllPeers() {
+			peers = append(peers, &types.Peer{
+				PeerID: strconv.FormatUint(peer.ID, 10),
+				Metadata: map[string]interface{}{
+					"address": peer.Address(),
+				},
+			})
+		}
 	}
 
 	syncStatus := &types.SyncStatus{
