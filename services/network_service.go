@@ -58,13 +58,23 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	*syncStatus.Synced = *syncStatus.Stage == lib.SyncStateFullyCurrent.String() ||
 		(isSyncing && (*syncStatus.TargetIndex-*syncStatus.CurrentIndex) <= 3)
 
-	genesisBlock := s.node.GetBlockAtHeight(0)
-	currentBlock := s.node.GetBlockAtHeight(*syncStatus.CurrentIndex)
+	genesisBlockNode := blockchain.BestChain()[0]
+	genesisBlockIdentifier := &types.BlockIdentifier{
+		Index: int64(0),
+		Hash:  genesisBlockNode.Hash.String(),
+	}
+
+	currentBlockIdentifier := &types.BlockIdentifier{
+		Index: int64(committedTip.Height),
+		Hash:  committedTip.Hash.String(),
+	}
+
+	currentBlockTimestamp := int64(committedTip.Header.TstampNanoSecs) / 1e6
 
 	return &types.NetworkStatusResponse{
-		CurrentBlockIdentifier: currentBlock.BlockIdentifier,
-		CurrentBlockTimestamp:  currentBlock.Timestamp,
-		GenesisBlockIdentifier: genesisBlock.BlockIdentifier,
+		CurrentBlockIdentifier: currentBlockIdentifier,
+		CurrentBlockTimestamp:  currentBlockTimestamp,
+		GenesisBlockIdentifier: genesisBlockIdentifier,
 		Peers:                  peers,
 		SyncStatus:             syncStatus,
 	}, nil
