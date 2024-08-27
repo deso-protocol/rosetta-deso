@@ -3,6 +3,7 @@ package deso
 import (
 	"flag"
 	"fmt"
+	"github.com/DataDog/datadog-go/statsd"
 	"math/rand"
 	"net"
 	"os"
@@ -255,6 +256,16 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
+	// Setup statsd
+	var statsdClient *statsd.Client
+	ddAgentHost := os.Getenv("DD_AGENT_HOST")
+	if ddAgentHost != "" {
+		statsdClient, err = statsd.New(fmt.Sprintf("%s:%d", os.Getenv("DD_AGENT_HOST"), 8125))
+		if err != nil {
+			glog.Fatal(err)
+		}
+	}
+
 	var blsKeyStore *lib.BLSKeystore
 	if node.Config.PosValidatorSeed != "" {
 		blsKeyStore, err = lib.NewBLSKeystore(node.Config.PosValidatorSeed)
@@ -300,7 +311,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		disableNetworking,
 		readOnly,
 		false,
-		nil,
+		statsdClient,
 		node.Config.BlockProducerSeed,
 		[]string{},
 		0,
