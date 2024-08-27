@@ -60,6 +60,13 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	*syncStatus.Synced = *syncStatus.Stage == lib.SyncStateFullyCurrent.String() ||
 		(isSyncing && (*syncStatus.TargetIndex-*syncStatus.CurrentIndex) <= 3)
 
+	bestChain := blockchain.BestChain()
+	if len(bestChain) == 0 {
+		return nil, &types.Error{
+			Code:    500,
+			Message: "No blocks in best chain",
+		}
+	}
 	genesisBlockNode := blockchain.BestChain()[0]
 	genesisBlockIdentifier := &types.BlockIdentifier{
 		Index: int64(0),
@@ -71,7 +78,7 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 		Hash:  committedTip.Hash.String(),
 	}
 
-	currentBlockTimestamp := int64(committedTip.Header.TstampNanoSecs) / 1e6
+	currentBlockTimestamp := int64(committedTip.Header.TstampNanoSecs) / 1e6 // Convert nanoseconds to milliseconds
 
 	return &types.NetworkStatusResponse{
 		CurrentBlockIdentifier: currentBlockIdentifier,
