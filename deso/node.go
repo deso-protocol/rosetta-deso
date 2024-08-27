@@ -3,6 +3,7 @@ package deso
 import (
 	"flag"
 	"fmt"
+	"github.com/DataDog/datadog-go/statsd"
 	"math/rand"
 	"net"
 	"os"
@@ -255,6 +256,16 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	rateLimitFeerateNanosPerKB := uint64(0)
 	stallTimeoutSeconds := uint64(900)
 
+	// Setup statsd
+	var statsdClient *statsd.Client
+	ddAgentHost := os.Getenv("DD_AGENT_HOST")
+	if ddAgentHost != "" {
+		statsdClient, err = statsd.New(fmt.Sprintf("%s:%d", os.Getenv("DD_AGENT_HOST"), 8125))
+		if err != nil {
+			glog.Fatal(err)
+		}
+	}
+
 	var blsKeyStore *lib.BLSKeystore
 	if node.Config.PosValidatorSeed != "" {
 		blsKeyStore, err = lib.NewBLSKeystore(node.Config.PosValidatorSeed)
@@ -300,7 +311,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		disableNetworking,
 		readOnly,
 		false,
-		nil,
+		statsdClient,
 		node.Config.BlockProducerSeed,
 		[]string{},
 		0,
@@ -316,17 +327,12 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		10000, // State syncer mempool txn sync limit
 		checkpointSyncingProviders,
 	)
-	// Set the snapshot on the rosetta index.
-	node.Index.snapshot = node.GetBlockchain().Snapshot()
 	if err != nil {
-		if shouldRestart {
-			glog.Infof(lib.CLog(lib.Red, fmt.Sprintf("Start: Got en error while starting server and shouldRestart "+
-				"is true. Node will be erased and resynced. Error: (%v)", err)))
-			node.nodeMessageChan <- lib.NodeErase
-			return
-		}
+		glog.Errorf("Problem creating server: (shouldRestart: %v): %v", shouldRestart, err)
 		panic(err)
 	}
+	// Set the snapshot on the rosetta index.
+	node.Index.snapshot = node.GetBlockchain().Snapshot()
 
 	if !shouldRestart {
 		node.Server.Start()
