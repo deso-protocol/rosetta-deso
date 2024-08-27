@@ -35,11 +35,17 @@ func (s *AccountAPIService) AccountBalance(
 	}
 
 	currentBlock := s.node.GetBlockchain().BlockTip()
+	currentBlockHash := currentBlock.Hash.String()
+	currentBlockHeight := int64(currentBlock.Height)
+	currentBlockIdentifier := &types.PartialBlockIdentifier{
+		Index: &currentBlockHeight,
+		Hash:  &currentBlockHash,
+	}
 
 	if request.BlockIdentifier == nil ||
 		(request.BlockIdentifier.Hash != nil && *request.BlockIdentifier.Hash == currentBlock.Hash.String()) ||
 		(request.BlockIdentifier.Index != nil && *request.BlockIdentifier.Index == int64(currentBlock.Height)) {
-		return accountBalanceCurrent(s.node, request.AccountIdentifier)
+		return accountBalanceSnapshot(s.node, request.AccountIdentifier, currentBlockIdentifier)
 	} else {
 		return accountBalanceSnapshot(s.node, request.AccountIdentifier, request.BlockIdentifier)
 	}
