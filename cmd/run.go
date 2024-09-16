@@ -114,11 +114,11 @@ to quickly create a Cobra application.`,
 			panic(fmt.Sprintf("Problem reading block index from db: %v", err))
 		}
 
-		tipNode := blockIndexByHash[*bestBlockHash]
-		if tipNode == nil {
+		tipNode, tipNodeExists := blockIndexByHash.Get(*bestBlockHash)
+		if tipNode == nil || !tipNodeExists {
 			panic(fmt.Sprintf("Best hash (%#v) not found in block index", bestBlockHash.String()))
 		}
-		bestChain, err := lib.GetBestChain(tipNode, blockIndexByHash)
+		bestChain, err := lib.GetBestChain(tipNode)
 		if err != nil {
 			panic(fmt.Sprintf("Problem reading best chain from db: %v", err))
 		}
