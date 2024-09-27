@@ -230,6 +230,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	if len(connectIPs) == 0 && node.Params.NetworkType == lib.NetworkType_MAINNET {
 		connectIPs = append(connectIPs, "deso-seed-4.io")
 	}
+	glog.V(0).Infof("Connect IPs: %v", connectIPs)
 
 	// Setup rosetta index
 	rosettaIndexDir := filepath.Join(node.Config.DataDirectory, "index")
