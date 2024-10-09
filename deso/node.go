@@ -3,7 +3,6 @@ package deso
 import (
 	"flag"
 	"fmt"
-	"github.com/DataDog/datadog-go/statsd"
 	"math/rand"
 	"net"
 	"os"
