@@ -3,6 +3,7 @@ package deso
 import (
 	"flag"
 	"fmt"
+	"github.com/DataDog/datadog-go/v5/statsd"
 	"math/rand"
 	"net"
 	"os"
@@ -12,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deso-protocol/go-deadlock"
 	"github.com/dgraph-io/badger/v3"
+	"github.com/sasha-s/go-deadlock"
 
 	"github.com/btcsuite/btcd/addrmgr"
 	"github.com/btcsuite/btcd/wire"

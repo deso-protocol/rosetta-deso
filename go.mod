@@ -7,16 +7,17 @@ toolchain go1.23.2
 replace github.com/deso-protocol/core => ../core/
 
 require (
+	github.com/DataDog/datadog-go/v5 v5.5.0
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/coinbase/rosetta-sdk-go v0.6.10
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/deso-protocol/core v1.1.0
-	github.com/deso-protocol/go-deadlock v1.0.0
 	github.com/deso-protocol/go-merkle-tree v1.0.0
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/golang/glog v1.0.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pkg/errors v0.9.1
+	github.com/sasha-s/go-deadlock v0.3.5
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
@@ -27,7 +28,6 @@ require (
 	github.com/DataDog/appsec-internal-go v1.7.0 // indirect
 	github.com/DataDog/datadog-agent/pkg/obfuscate v0.48.0 // indirect
 	github.com/DataDog/datadog-agent/pkg/remoteconfig/state v0.48.1 // indirect
-	github.com/DataDog/datadog-go/v5 v5.5.0 // indirect
 	github.com/DataDog/go-libddwaf/v3 v3.2.1 // indirect
 	github.com/DataDog/go-tuf v1.0.2-0.5.2 // indirect
 	github.com/DataDog/gostackparse v0.7.0 // indirect
@@ -79,7 +79,7 @@ require (
 	github.com/onflow/crypto v0.25.0 // indirect
 	github.com/outcaste-io/ristretto v0.2.3 // indirect
 	github.com/pelletier/go-toml v1.7.0 // indirect
-	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
+	github.com/petermattis/goid v0.0.0-20240813172612-4fcff4a6cae7 // indirect
 	github.com/philhofer/fwd v1.1.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/richardartoul/molecule v1.0.1-0.20240531184615-7ca0df43c0b3 // indirect
