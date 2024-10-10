@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/deso-protocol/core/lib"
-	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/stretchr/testify/require"
 )
 

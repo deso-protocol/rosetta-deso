@@ -5,14 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
 	"github.com/deso-protocol/core/lib"
 	merkletree "github.com/deso-protocol/go-merkle-tree"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"github.com/pkg/errors"
-	"math/big"
 	"reflect"
 	"strconv"
 )
@@ -379,10 +379,15 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 
 	// signature is in form of R || S
 	signatureBytes := request.Signatures[0].Bytes
-	desoTxn.Signature.SetSignature(&btcec.Signature{
-		R: new(big.Int).SetBytes(signatureBytes[:32]),
-		S: new(big.Int).SetBytes(signatureBytes[32:64]),
-	})
+	var rBytes [32]byte
+	copy(rBytes[:], signatureBytes[:32])
+	sigR := secp256k1.ModNScalar{}
+	sigR.PutBytes(&rBytes)
+	var sBytes [32]byte
+	copy(sBytes[:], signatureBytes[32:64])
+	sigS := secp256k1.ModNScalar{}
+	sigS.PutBytes(&sBytes)
+	desoTxn.Signature.SetSignature(ecdsa.NewSignature(&sigR, &sigS))
 
 	signedTxnBytes, err := desoTxn.ToBytes(false)
 	if err != nil {
