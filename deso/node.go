@@ -3,7 +3,7 @@ package deso
 import (
 	"flag"
 	"fmt"
-	"github.com/DataDog/datadog-go/statsd"
+	"github.com/DataDog/datadog-go/v5/statsd"
 	"math/rand"
 	"net"
 	"os"
@@ -85,9 +85,9 @@ func addIPsForHost(desoAddrMgr *addrmgr.AddrManager, host string, params *lib.De
 	glog.V(1).Infof("_addSeedAddrs: Adding seed IPs from seed %s: %v\n", host, ipAddrs)
 
 	// Convert addresses to NetAddress'es.
-	netAddrs := make([]*wire.NetAddress, len(ipAddrs))
+	netAddrs := make([]*wire.NetAddressV2, len(ipAddrs))
 	for ii, ip := range ipAddrs {
-		netAddrs[ii] = wire.NewNetAddressTimestamp(
+		netAddrs[ii] = wire.NetAddressV2FromBytes(
 			// We initialize addresses with a
 			// randomly selected "last seen time" between 3
 			// and 7 days ago similar to what bitcoind does.
@@ -204,7 +204,14 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 
 	if node.Online && len(node.Config.ConnectIPs) == 0 {
 		for _, addr := range listeningAddrs {
-			netAddr := wire.NewNetAddress(&addr, 0)
+
+			netAddr := wire.NetAddressV2FromBytes(
+				time.Now().Add(-1*time.Second*time.Duration(lib.SecondsIn3Days+
+					lib.RandInt32(lib.SecondsIn4Days))),
+				0,
+				addr.IP,
+				uint16(addr.Port),
+			)
 			_ = desoAddrMgr.AddLocalAddress(netAddr, addrmgr.BoundPrio)
 		}
 
