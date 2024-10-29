@@ -29,6 +29,9 @@ func (node *Node) GetBlock(hash string) (*types.Block, *types.Error) {
 	if blockNode == nil {
 		return nil, ErrBlockNodeNotFound
 	}
+	if !blockNode.IsCommitted() {
+		return nil, ErrBlockIsNotCommitted
+	}
 
 	height := blockNode.Header.Height
 	blockIdentifier := &types.BlockIdentifier{
@@ -96,8 +99,12 @@ func (node *Node) GetBlock(hash string) (*types.Block, *types.Error) {
 
 func (node *Node) GetBlockAtHeight(height int64) (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
-	// We add +1 to the height, because blockNodes are indexed from height 0.
-	if int64(len(blockchain.BestChain())) < height+1 {
+	committedTip, idx := blockchain.GetCommittedTip()
+	if idx == -1 || committedTip == nil {
+		return nil, ErrCommittedTipNotFound
+	}
+	// If height is greater than committed tip, exit early..
+	if int64(committedTip.Height) < height {
 		return nil, ErrBlockHeightTooHigh
 	}
 
@@ -111,8 +118,12 @@ func (node *Node) GetBlockAtHeight(height int64) (*types.Block, *types.Error) {
 
 func (node *Node) CurrentBlock() (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
+	committedTipNode, idx := blockchain.GetCommittedTip()
+	if idx == -1 || committedTipNode == nil {
+		return nil, ErrCommittedTipNotFound
+	}
 
-	return node.GetBlockAtHeight(int64(blockchain.BlockTip().Height))
+	return node.GetBlockAtHeight(int64(committedTipNode.Height))
 }
 
 func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) ([]*types.Transaction, *types.Error) {

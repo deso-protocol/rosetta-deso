@@ -47,4 +47,14 @@ var (
 		Code:    106,
 		Message: "Msg DeSo Block not found",
 	}
+
+	ErrCommittedTipNotFound = &types.Error{
+		Code:    107,
+		Message: "Committed tip not found",
+	}
+
+	ErrBlockIsNotCommitted = &types.Error{
+		Code:    108,
+		Message: "Block is not committed",
+	}
 )
