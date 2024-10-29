@@ -18,6 +18,12 @@ var (
 		ErrInvalidCoin,
 		ErrInvalidTransaction,
 		ErrMultipleInputs,
+		ErrFeeRateBelowNetworkMinimum,
+		ErrFeeTooLow,
+		ErrNonceExpirationBlockHeightOffsetTooLarge,
+		ErrNonceExpirationBlockHeightTooLow,
+		ErrNonceExpirationBlockHeightTooHigh,
+		ErrLegacyUtxoSelectionNotAllowed,
 	}
 
 	ErrUnimplemented = &types.Error{

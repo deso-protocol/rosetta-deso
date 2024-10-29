@@ -33,7 +33,10 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, ErrUnavailableOffline
 	}
 
-	currentBlock := s.node.GetBlockchain().BlockTip()
+	currentBlock, idx := s.node.GetBlockchain().GetCommittedTip()
+	if idx == -1 || currentBlock == nil {
+		return nil, ErrBlockNotFound
+	}
 	currentBlockHash := currentBlock.Hash.String()
 	currentBlockHeight := int64(currentBlock.Height)
 	currentBlockIdentifier := &types.PartialBlockIdentifier{
@@ -66,8 +69,12 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		blockHeight = blockNode.Header.Height
 	} else if block.Index != nil {
 		blockHeight = uint64(*block.Index)
+		committedTip, idx := node.GetBlockchain().GetCommittedTip()
+		if idx == -1 || committedTip == nil {
+			return nil, ErrBlockNotFound
+		}
 		// We add +1 to the height, because blockNodes are indexed from height 0.
-		if uint64(len(node.GetBlockchain().BestChain())) < blockHeight+1 {
+		if uint64(committedTip.Height) < blockHeight {
 			return nil, ErrBlockNotFound
 		}
 
@@ -120,6 +127,7 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	}, nil
 }
 
+// TODO: this needs to be entirely rewritten for balance model.
 func (s *AccountAPIService) AccountCoins(
 	ctx context.Context,
 	request *types.AccountCoinsRequest,

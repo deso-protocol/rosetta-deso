@@ -108,7 +108,7 @@ func (s *NetworkAPIService) NetworkOptions(ctx context.Context, request *types.N
 				},
 			},
 			OperationTypes:          deso.OperationTypes,
-			Errors:                  Errors,
+			Errors:                  append(Errors, deso.Errors...),
 			HistoricalBalanceLookup: true,
 		},
 	}, nil

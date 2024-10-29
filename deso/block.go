@@ -15,10 +15,10 @@ import (
 	"github.com/deso-protocol/core/lib"
 )
 
-func (node *Node) GetBlock(hash string) *types.Block {
+func (node *Node) GetBlock(hash string) (*types.Block, *types.Error) {
 	hashBytes, err := hex.DecodeString(hash)
 	if err != nil {
-		return nil
+		return nil, ErrCannotDecodeBlockHash
 	}
 
 	blockHash := &lib.BlockHash{}
@@ -27,7 +27,10 @@ func (node *Node) GetBlock(hash string) *types.Block {
 	blockchain := node.GetBlockchain()
 	blockNode := blockchain.GetBlockNodeWithHash(blockHash)
 	if blockNode == nil {
-		return nil
+		return nil, ErrBlockNodeNotFound
+	}
+	if !blockNode.IsCommitted() {
+		return nil, ErrBlockIsNotCommitted
 	}
 
 	height := blockNode.Header.Height
@@ -67,14 +70,22 @@ func (node *Node) GetBlock(hash string) *types.Block {
 				ParentBlockIdentifier: parentBlockIdentifier,
 				Timestamp:             int64(blockNode.Header.TstampNanoSecs) / 1e6, // Convert nanoseconds to milliseconds
 				Transactions:          transactions,
-			}
+			}, nil
 		}
 	}
 
 	block := blockchain.GetBlock(blockHash)
 	if block == nil {
-		return nil
+		return nil, ErrMsgDesoBlockNotFound
 	}
+
+	var convertBlockErr *types.Error
+	var transactions []*types.Transaction
+	transactions, convertBlockErr = node.GetTransactionsForConvertBlock(block)
+	if convertBlockErr != nil {
+		return nil, convertBlockErr
+	}
+
 	// If we get here, we know we either don't have a snapshot, or we're past the first
 	// snapshot height. This means we need to parse and return the transaction operations
 	// like usual.
@@ -82,38 +93,47 @@ func (node *Node) GetBlock(hash string) *types.Block {
 		BlockIdentifier:       blockIdentifier,
 		ParentBlockIdentifier: parentBlockIdentifier,
 		Timestamp:             int64(blockNode.Header.TstampNanoSecs) / 1e6, // Convert nanoseconds to milliseconds
-		Transactions:          node.GetTransactionsForConvertBlock(block),
-	}
+		Transactions:          transactions,
+	}, nil
 }
 
-func (node *Node) GetBlockAtHeight(height int64) *types.Block {
+func (node *Node) GetBlockAtHeight(height int64) (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
-	// We add +1 to the height, because blockNodes are indexed from height 0.
-	if int64(len(blockchain.BestChain())) < height+1 {
-		return nil
+	committedTip, idx := blockchain.GetCommittedTip()
+	if idx == -1 || committedTip == nil {
+		return nil, ErrCommittedTipNotFound
+	}
+	// If height is greater than committed tip, exit early..
+	if int64(committedTip.Height) < height {
+		return nil, ErrBlockHeightTooHigh
 	}
 
 	// Make sure the blockNode has the correct height.
 	if int64(blockchain.BestChain()[height].Header.Height) != height {
-		return nil
+		return nil, ErrBlockHeightMismatch
 	}
 	blockHash := blockchain.BestChain()[height].Hash
 	return node.GetBlock(blockHash.String())
 }
 
-func (node *Node) CurrentBlock() *types.Block {
+func (node *Node) CurrentBlock() (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
+	committedTipNode, idx := blockchain.GetCommittedTip()
+	if idx == -1 || committedTipNode == nil {
+		return nil, ErrCommittedTipNotFound
+	}
 
-	return node.GetBlockAtHeight(int64(blockchain.BlockTip().Height))
+	return node.GetBlockAtHeight(int64(committedTipNode.Height))
 }
 
-func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*types.Transaction {
+func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) ([]*types.Transaction, *types.Error) {
 	transactions := []*types.Transaction{}
 
 	// Fetch the Utxo ops for this block
 	utxoOpsForBlock, err := node.Index.GetUtxoOps(block)
 	if err != nil {
 		glog.Error(errors.Wrapf(err, "GetTransactionsForConvertBlock: Problem fetching utxo ops for block"))
+		return nil, ErrProblemFetchingUtxoOpsForBlock
 	}
 
 	// TODO: Can we be smarter about this size somehow?
@@ -191,7 +211,7 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 		if err != nil {
 			// This is bad if this happens.
 			glog.Error(errors.Wrapf(err, "GetTransactionsForConvertBlock: Problem fetching block hash"))
-			return transactions
+			return nil, ErrCannotHashBlock
 		}
 		utxoOpsForBlockLevel := utxoOpsForBlock[len(utxoOpsForBlock)-1]
 		var ops []*types.Operation
@@ -210,7 +230,7 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) []*typ
 		transactions = append(transactions, transaction)
 	}
 
-	return transactions
+	return transactions, nil
 }
 
 func (node *Node) getOperationsForTransaction(
