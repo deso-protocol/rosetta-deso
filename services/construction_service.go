@@ -164,7 +164,8 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		return nil, wrapErr(ErrUnableToParseIntermediateResult, err)
 	}
 
-	if options.LegacyUTXOSelection && s.node.GetBlockchain().BlockTip().Height >= s.node.Params.ForkHeights.BalanceModelBlockHeight {
+	if options.LegacyUTXOSelection &&
+		s.node.GetBlockchain().BlockTip().Height >= s.node.Params.ForkHeights.BalanceModelBlockHeight {
 		return nil, ErrLegacyUtxoSelectionNotAllowed
 	}
 

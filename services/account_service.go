@@ -33,7 +33,10 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, ErrUnavailableOffline
 	}
 
-	currentBlock := s.node.GetBlockchain().BlockTip()
+	currentBlock, idx := s.node.GetBlockchain().GetCommittedTip()
+	if idx == -1 || currentBlock == nil {
+		return nil, ErrBlockNotFound
+	}
 	currentBlockHash := currentBlock.Hash.String()
 	currentBlockHeight := int64(currentBlock.Height)
 	currentBlockIdentifier := &types.PartialBlockIdentifier{
@@ -124,6 +127,7 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 	}, nil
 }
 
+// TODO: this needs to be entirely rewritten for balance model.
 func (s *AccountAPIService) AccountCoins(
 	ctx context.Context,
 	request *types.AccountCoinsRequest,
