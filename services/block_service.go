@@ -29,12 +29,17 @@ func (s *BlockAPIService) Block(
 	}
 
 	block := &types.Block{}
+	var err *types.Error
 	if request.BlockIdentifier.Index != nil {
-		block = s.node.GetBlockAtHeight(*request.BlockIdentifier.Index)
+		block, err = s.node.GetBlockAtHeight(*request.BlockIdentifier.Index)
 	} else if request.BlockIdentifier.Hash != nil {
-		block = s.node.GetBlock(*request.BlockIdentifier.Hash)
+		block, err = s.node.GetBlock(*request.BlockIdentifier.Hash)
 	} else {
-		block = s.node.CurrentBlock()
+		block, err = s.node.CurrentBlock()
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	if block == nil {

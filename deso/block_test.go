@@ -115,7 +115,8 @@ func TestUtxoOpsProblem(t *testing.T) {
 	utxoOpsForBlock, _ := node.Index.GetUtxoOps(block)
 	fmt.Printf("Retrieved the utxoops, length: (%v)\n", len(utxoOpsForBlock))
 
-	txns := node.GetTransactionsForConvertBlock(block)
+	txns, desoErr := node.GetTransactionsForConvertBlock(block)
 	_ = txns
 	fmt.Printf("Retrieved transactions, length: (%v)\n", len(txns))
+	fmt.Println(desoErr)
 }
