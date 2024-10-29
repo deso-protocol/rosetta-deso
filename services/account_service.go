@@ -66,8 +66,12 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		blockHeight = blockNode.Header.Height
 	} else if block.Index != nil {
 		blockHeight = uint64(*block.Index)
+		committedTip, idx := node.GetBlockchain().GetCommittedTip()
+		if idx == -1 || committedTip == nil {
+			return nil, ErrBlockNotFound
+		}
 		// We add +1 to the height, because blockNodes are indexed from height 0.
-		if uint64(len(node.GetBlockchain().BestChain())) < blockHeight+1 {
+		if uint64(committedTip.Height) < blockHeight {
 			return nil, ErrBlockNotFound
 		}
 
