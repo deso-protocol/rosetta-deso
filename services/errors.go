@@ -18,6 +18,12 @@ var (
 		ErrInvalidCoin,
 		ErrInvalidTransaction,
 		ErrMultipleInputs,
+		ErrFeeRateBelowNetworkMinimum,
+		ErrFeeTooLow,
+		ErrNonceExpirationBlockHeightOffsetTooLarge,
+		ErrNonceExpirationBlockHeightTooLow,
+		ErrNonceExpirationBlockHeightTooHigh,
+		ErrLegacyUtxoSelectionNotAllowed,
 	}
 
 	ErrUnimplemented = &types.Error{
@@ -109,36 +115,6 @@ var (
 	ErrLegacyUtxoSelectionNotAllowed = &types.Error{
 		Code:    17,
 		Message: "Legacy UTXO selection is not allowed after the migration to balance model",
-	}
-
-	ErrBlockHeightTooHigh = &types.Error{
-		Code:    18,
-		Message: "Block height is higher than the current tip",
-	}
-
-	ErrBlockHeightMismatch = &types.Error{
-		Code:    19,
-		Message: "Block at index does not have the expected height",
-	}
-
-	ErrCannotDecodeBlockHash = &types.Error{
-		Code:    20,
-		Message: "Cannot decode block hash",
-	}
-
-	ErrBlockNodeNotFound = &types.Error{
-		Code:    21,
-		Message: "Block node not found",
-	}
-
-	ErrProblemFetchingUtxoOpsForBlock = &types.Error{
-		Code:    22,
-		Message: "Problem fetching UTXO operations for block",
-	}
-
-	ErrCannotHashBlock = &types.Error{
-		Code:    23,
-		Message: "Cannot hash block",
 	}
 )
 

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/deso-protocol/rosetta-deso/services"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"sort"
@@ -19,7 +18,7 @@ import (
 func (node *Node) GetBlock(hash string) (*types.Block, *types.Error) {
 	hashBytes, err := hex.DecodeString(hash)
 	if err != nil {
-		return nil, services.ErrCannotDecodeBlockHash
+		return nil, ErrCannotDecodeBlockHash
 	}
 
 	blockHash := &lib.BlockHash{}
@@ -28,7 +27,7 @@ func (node *Node) GetBlock(hash string) (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
 	blockNode := blockchain.GetBlockNodeWithHash(blockHash)
 	if blockNode == nil {
-		return nil, services.ErrBlockNodeNotFound
+		return nil, ErrBlockNodeNotFound
 	}
 
 	height := blockNode.Header.Height
@@ -74,7 +73,7 @@ func (node *Node) GetBlock(hash string) (*types.Block, *types.Error) {
 
 	block := blockchain.GetBlock(blockHash)
 	if block == nil {
-		return nil, services.ErrBlockNotFound
+		return nil, ErrMsgDesoBlockNotFound
 	}
 
 	var convertBlockErr *types.Error
@@ -99,12 +98,12 @@ func (node *Node) GetBlockAtHeight(height int64) (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
 	// We add +1 to the height, because blockNodes are indexed from height 0.
 	if int64(len(blockchain.BestChain())) < height+1 {
-		return nil, services.ErrBlockHeightTooHigh
+		return nil, ErrBlockHeightTooHigh
 	}
 
 	// Make sure the blockNode has the correct height.
 	if int64(blockchain.BestChain()[height].Header.Height) != height {
-		return nil, services.ErrBlockHeightMismatch
+		return nil, ErrBlockHeightMismatch
 	}
 	blockHash := blockchain.BestChain()[height].Hash
 	return node.GetBlock(blockHash.String())
@@ -123,7 +122,7 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) ([]*ty
 	utxoOpsForBlock, err := node.Index.GetUtxoOps(block)
 	if err != nil {
 		glog.Error(errors.Wrapf(err, "GetTransactionsForConvertBlock: Problem fetching utxo ops for block"))
-		return nil, services.ErrProblemFetchingUtxoOpsForBlock
+		return nil, ErrProblemFetchingUtxoOpsForBlock
 	}
 
 	// TODO: Can we be smarter about this size somehow?
@@ -201,7 +200,7 @@ func (node *Node) GetTransactionsForConvertBlock(block *lib.MsgDeSoBlock) ([]*ty
 		if err != nil {
 			// This is bad if this happens.
 			glog.Error(errors.Wrapf(err, "GetTransactionsForConvertBlock: Problem fetching block hash"))
-			return nil, services.ErrCannotHashBlock
+			return nil, ErrCannotHashBlock
 		}
 		utxoOpsForBlockLevel := utxoOpsForBlock[len(utxoOpsForBlock)-1]
 		var ops []*types.Operation
