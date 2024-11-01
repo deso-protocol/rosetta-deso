@@ -7,7 +7,7 @@ toolchain go1.23.2
 replace github.com/deso-protocol/core => ../core/
 
 require (
-	github.com/DataDog/datadog-go v4.8.3+incompatible
+	github.com/DataDog/datadog-go/v5 v5.5.0
 	github.com/btcsuite/btcd v0.24.2
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/coinbase/rosetta-sdk-go v0.8.5
@@ -33,7 +33,6 @@ require (
 	github.com/DataDog/appsec-internal-go v1.8.0 // indirect
 	github.com/DataDog/datadog-agent/pkg/obfuscate v0.57.1 // indirect
 	github.com/DataDog/datadog-agent/pkg/remoteconfig/state v0.57.1 // indirect
-	github.com/DataDog/datadog-go/v5 v5.5.0 // indirect
 	github.com/DataDog/go-libddwaf/v3 v3.4.0 // indirect
 	github.com/DataDog/go-sqllexer v0.0.16 // indirect
 	github.com/DataDog/go-tuf v1.1.0-0.5.2 // indirect
@@ -80,6 +79,7 @@ require (
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.1.8 // indirect
 	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-5 // indirect
 	github.com/holiman/uint256 v1.3.1 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
