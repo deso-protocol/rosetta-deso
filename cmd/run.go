@@ -119,7 +119,8 @@ to quickly create a Cobra application.`,
 		if tipNode == nil || !tipNodeExists {
 			panic(fmt.Sprintf("Best hash (%#v) not found in block index", bestBlockHash.String()))
 		}
-		bestChain, err := lib.GetBestChain(tipNode)
+		blockIndex := lib.NewBlockIndex(chainDB, nil, tipNode)
+		bestChain, err := lib.GetBestChain(tipNode, blockIndex)
 		if err != nil {
 			panic(fmt.Sprintf("Problem reading best chain from db: %v", err))
 		}

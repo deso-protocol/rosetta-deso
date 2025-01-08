@@ -49,7 +49,13 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	}
 
 	blockchain := s.node.GetBlockchain()
-	committedTip, _ := blockchain.GetCommittedTip()
+	committedTip, exists := blockchain.GetCommittedTip()
+	if !exists || committedTip == nil {
+		return nil, &types.Error{
+			Code:    500,
+			Message: "Committed tip not found",
+		}
+	}
 
 	*syncStatus.CurrentIndex = int64(committedTip.Height)
 	*syncStatus.TargetIndex = int64(blockchain.HeaderTip().Height)
@@ -60,14 +66,13 @@ func (s *NetworkAPIService) NetworkStatus(ctx context.Context, request *types.Ne
 	*syncStatus.Synced = *syncStatus.Stage == lib.SyncStateFullyCurrent.String() ||
 		(isSyncing && (*syncStatus.TargetIndex-*syncStatus.CurrentIndex) <= 3)
 
-	bestChain := blockchain.BestChain()
-	if len(bestChain) == 0 {
+	genesisBlockNode, exists, err := blockchain.GetBlockFromBestChainByHeight(0, false)
+	if err != nil || !exists {
 		return nil, &types.Error{
 			Code:    500,
-			Message: "No blocks in best chain",
+			Message: "Failed to get genesis block",
 		}
 	}
-	genesisBlockNode := blockchain.BestChain()[0]
 	genesisBlockIdentifier := &types.BlockIdentifier{
 		Index: int64(0),
 		Hash:  genesisBlockNode.Hash.String(),

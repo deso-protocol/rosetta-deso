@@ -99,8 +99,8 @@ func (node *Node) GetBlock(hash string) (*types.Block, *types.Error) {
 
 func (node *Node) GetBlockAtHeight(height int64) (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
-	committedTip, idx := blockchain.GetCommittedTip()
-	if idx == -1 || committedTip == nil {
+	committedTip, exists := blockchain.GetCommittedTip()
+	if !exists || committedTip == nil {
 		return nil, ErrCommittedTipNotFound
 	}
 	// If height is greater than committed tip, exit early..
@@ -109,17 +109,26 @@ func (node *Node) GetBlockAtHeight(height int64) (*types.Block, *types.Error) {
 	}
 
 	// Make sure the blockNode has the correct height.
-	if int64(blockchain.BestChain()[height].Header.Height) != height {
+	blockNode, exists, err := blockchain.GetBlockFromBestChainByHeight(uint64(height), false)
+	if err != nil {
+		glog.Errorf("GetBlockAtHeight: Problem fetching block node by height: %v", err)
+		return nil, ErrBlockNodeNotFound
+	}
+	if !exists {
+		glog.Errorf("GetBlockAtHeight: Problem fetching block node by height: block node does not exist")
+		return nil, ErrBlockNodeNotFound
+	}
+	if int64(blockNode.Height) != height {
 		return nil, ErrBlockHeightMismatch
 	}
-	blockHash := blockchain.BestChain()[height].Hash
+	blockHash := blockNode.Hash
 	return node.GetBlock(blockHash.String())
 }
 
 func (node *Node) CurrentBlock() (*types.Block, *types.Error) {
 	blockchain := node.GetBlockchain()
-	committedTipNode, idx := blockchain.GetCommittedTip()
-	if idx == -1 || committedTipNode == nil {
+	committedTipNode, exists := blockchain.GetCommittedTip()
+	if !exists || committedTipNode == nil {
 		return nil, ErrCommittedTipNotFound
 	}
 
