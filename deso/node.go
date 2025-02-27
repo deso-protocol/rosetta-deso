@@ -237,6 +237,10 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 	if len(connectIPs) == 0 && node.Params.NetworkType == lib.NetworkType_MAINNET {
 		connectIPs = append(connectIPs, "deso-seed-4.io")
 	}
+	// If the node is offline, then we don't want to connect to any other nodes.
+	if !node.Online {
+		connectIPs = []string{}
+	}
 	glog.V(0).Infof("Connect IPs: %v", connectIPs)
 
 	// Setup rosetta index
