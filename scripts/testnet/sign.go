@@ -23,9 +23,21 @@ func main() {
 		panic(err)
 	}
 
-	signature, _ := privateKey.Sign(transactionHex)
-	r := hex.EncodeToString(signature.R.Bytes())
-	s := hex.EncodeToString(signature.S.Bytes())
+	msgDesoTxn := lib.MsgDeSoTxn{}
+	err = msgDesoTxn.FromBytes(transactionHex)
+	if err != nil {
+		panic(err)
+	}
+	sig, err := msgDesoTxn.Sign(privateKey)
+	if err != nil {
+		panic(err)
+	}
+	rVal := sig.R()
+	sVal := sig.S()
+	rBytes := (&rVal).Bytes()
+	sBytes := (&sVal).Bytes()
+	r := hex.EncodeToString(rBytes[:])
+	s := hex.EncodeToString(sBytes[:])
 
 	fmt.Printf("%s%s\n", r, s)
 }
