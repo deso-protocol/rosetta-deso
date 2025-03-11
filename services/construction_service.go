@@ -383,11 +383,11 @@ func (s *ConstructionAPIService) ConstructionCombine(ctx context.Context, reques
 	var rBytes [32]byte
 	copy(rBytes[:], signatureBytes[:32])
 	sigR := secp256k1.ModNScalar{}
-	sigR.PutBytes(&rBytes)
+	sigR.SetBytes(&rBytes)
 	var sBytes [32]byte
 	copy(sBytes[:], signatureBytes[32:64])
 	sigS := secp256k1.ModNScalar{}
-	sigS.PutBytes(&sBytes)
+	sigS.SetBytes(&sBytes)
 	desoTxn.Signature.SetSignature(ecdsa.NewSignature(&sigR, &sigS))
 
 	signedTxnBytes, err := desoTxn.ToBytes(false)
