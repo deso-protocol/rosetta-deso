@@ -119,33 +119,33 @@ to quickly create a Cobra application.`,
 		if tipNode == nil || !tipNodeExists {
 			panic(fmt.Sprintf("Best hash (%#v) not found in block index", bestBlockHash.String()))
 		}
-		blockIndex := lib.NewBlockIndex(chainDB, nil, tipNode)
-		bestChain, err := lib.GetBestChain(tipNode, blockIndex)
-		if err != nil {
-			panic(fmt.Sprintf("Problem reading best chain from db: %v", err))
-		}
+		//blockIndex := lib.NewBlockIndex(chainDB, nil, tipNode)
+		//bestChain, err := lib.GetBestChain(tipNode, blockIndex)
+		//if err != nil {
+		//	panic(fmt.Sprintf("Problem reading best chain from db: %v", err))
+		//}
 
-		for _, bestChainNode := range bestChain {
-			block, err := lib.GetBlock(bestChainNode.Hash, chainDB, nil)
-			if err != nil {
-				panic(fmt.Sprintf("Problem reading block from db: %v", err))
-			}
-			if len(block.Txns) > 1 {
-				fmt.Println(block.Header.Height, bestChainNode.Hash.String(), len(block.Txns))
-				for _, txn := range block.Txns {
-					fmt.Println("\t", txn.Hash().String())
-					pubkeyString := "block reward"
-					if len(txn.PublicKey) != 0 {
-						pubkeyString = lib.PkToStringTestnet(txn.PublicKey)
-					}
-					fmt.Println("\t\tSender: \t", pubkeyString)
-					for _, output := range txn.TxOutputs {
-						fmt.Println("\t\tRecipient: \t", lib.PkToStringTestnet(output.PublicKey))
-						fmt.Println("\t\tAmount: \t", output.AmountNanos)
-					}
-				}
-			}
-		}
+		//for _, bestChainNode := range bestChain {
+		//	block, err := lib.GetBlock(bestChainNode.Hash, chainDB, nil)
+		//	if err != nil {
+		//		panic(fmt.Sprintf("Problem reading block from db: %v", err))
+		//	}
+		//	if len(block.Txns) > 1 {
+		//		fmt.Println(block.Header.Height, bestChainNode.Hash.String(), len(block.Txns))
+		//		for _, txn := range block.Txns {
+		//			fmt.Println("\t", txn.Hash().String())
+		//			pubkeyString := "block reward"
+		//			if len(txn.PublicKey) != 0 {
+		//				pubkeyString = lib.PkToStringTestnet(txn.PublicKey)
+		//			}
+		//			fmt.Println("\t\tSender: \t", pubkeyString)
+		//			for _, output := range txn.TxOutputs {
+		//				fmt.Println("\t\tRecipient: \t", lib.PkToStringTestnet(output.PublicKey))
+		//				fmt.Println("\t\tAmount: \t", output.AmountNanos)
+		//			}
+		//		}
+		//	}
+		//}
 		return nil
 	},
 }
