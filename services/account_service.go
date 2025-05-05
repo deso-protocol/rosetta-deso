@@ -33,8 +33,8 @@ func (s *AccountAPIService) AccountBalance(
 		return nil, ErrUnavailableOffline
 	}
 
-	currentBlock, idx := s.node.GetBlockchain().GetCommittedTip()
-	if idx == -1 || currentBlock == nil {
+	currentBlock, exists := s.node.GetBlockchain().GetCommittedTip()
+	if !exists || currentBlock == nil {
 		return nil, ErrBlockNotFound
 	}
 	currentBlockHash := currentBlock.Hash.String()
@@ -69,8 +69,8 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		blockHeight = blockNode.Header.Height
 	} else if block.Index != nil {
 		blockHeight = uint64(*block.Index)
-		committedTip, idx := node.GetBlockchain().GetCommittedTip()
-		if idx == -1 || committedTip == nil {
+		committedTip, exists := node.GetBlockchain().GetCommittedTip()
+		if !exists || committedTip == nil {
 			return nil, ErrBlockNotFound
 		}
 		// We add +1 to the height, because blockNodes are indexed from height 0.
@@ -79,10 +79,14 @@ func accountBalanceSnapshot(node *deso.Node, account *types.AccountIdentifier, b
 		}
 
 		// Make sure the blockNode has the correct height.
-		if node.GetBlockchain().BestChain()[blockHeight].Header.Height != blockHeight {
+		blockNode, exists, err := node.GetBlockchain().GetBlockFromBestChainByHeight(blockHeight, false)
+		if err != nil || !exists {
 			return nil, ErrBlockNotFound
 		}
-		blockHash = node.GetBlockchain().BestChain()[blockHeight].Hash
+		if blockNode.Header.Height != blockHeight {
+			return nil, ErrBlockNotFound
+		}
+		blockHash = blockNode.Hash
 	} else {
 		return nil, ErrBlockNotFound
 	}
