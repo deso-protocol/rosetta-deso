@@ -2,6 +2,7 @@ package deso
 
 import (
 	"errors"
+	"fmt"
 	"github.com/golang/glog"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ type Config struct {
 	SyncType               lib.NodeSyncType
 	MaxSyncBlockHeight     uint32
 	ForceChecksum          bool
+	BlockIndexSize         int
 
 	// Glog flags
 	LogDirectory string
@@ -94,5 +96,18 @@ func LoadConfig() (*Config, error) {
 	result.SyncType = lib.NodeSyncType(viper.GetString("sync-type"))
 	result.MaxSyncBlockHeight = viper.GetUint32("max-sync-block-height")
 	result.ForceChecksum = viper.GetBool("force-checksum")
+	result.BlockIndexSize = viper.GetInt("block-index-size")
+	if result.BlockIndexSize == 0 {
+		result.BlockIndexSize = lib.DefaultBlockIndexSize
+	}
+	if result.BlockIndexSize < 0 {
+		return nil, errors.New("block-index-size must be >= 0")
+	}
+	if result.BlockIndexSize < lib.MinBlockIndexSize {
+		return nil, errors.New(fmt.Sprintf("block-index-size must be >= %d", lib.MinBlockIndexSize))
+	}
+	if result.BlockIndexSize > lib.MaxBlockIndexSize {
+		return nil, errors.New(fmt.Sprintf("block-index-size must be <= %d", lib.MaxBlockIndexSize))
+	}
 	return &result, nil
 }

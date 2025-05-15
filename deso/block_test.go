@@ -104,6 +104,7 @@ func TestUtxoOpsProblem(t *testing.T) {
 		1500,  // 1500 milliseconds, pos block production interval milliseconds
 		10000, // State syncer mempool txn sync limit
 		nil,   // checkpoint syncing providers
+		node.Config.BlockIndexSize,
 	)
 	require.NoError(err)
 

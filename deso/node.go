@@ -338,6 +338,7 @@ func (node *Node) Start(exitChannels ...*chan os.Signal) {
 		10,    // 10 milliseconds, transaction validation refresh interval millis
 		10000, // State syncer mempool txn sync limit
 		checkpointSyncingProviders,
+		node.Config.BlockIndexSize,
 	)
 	if err != nil {
 		glog.Errorf("Problem creating server: (shouldRestart: %v): %v", shouldRestart, err)
