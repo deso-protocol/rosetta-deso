@@ -23,7 +23,7 @@ Running the following commands will create a Docker image called `rosetta-deso:l
 2. In the `rosetta-deso` repo, run the following (you may need sudo):
 
 ```
-docker build -t rosetta-deso -f Dockerfile ..
+docker build -t rosetta-deso -f Dockerfile .
 ```
 
 ### Run
