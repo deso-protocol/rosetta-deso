@@ -5,6 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strconv"
+
 	"github.com/coinbase/rosetta-sdk-go/server"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
@@ -13,8 +16,6 @@ import (
 	merkletree "github.com/deso-protocol/go-merkle-tree"
 	"github.com/deso-protocol/rosetta-deso/deso"
 	"github.com/pkg/errors"
-	"reflect"
-	"strconv"
 )
 
 const (
@@ -246,7 +247,7 @@ func (s *ConstructionAPIService) ConstructionMetadata(ctx context.Context, reque
 		txn.TxnNonce.PartialID = options.NoncePartialID
 	}
 	// Get the current max nonce expiration block height offset and current block height
-	currentMaxExpirationBlockHeightOffset := uint64(lib.DefaultMaxNonceExpirationBlockHeightOffset)
+	currentMaxExpirationBlockHeightOffset := uint64(2000)
 	if mempoolView.GetCurrentGlobalParamsEntry().MaxNonceExpirationBlockHeightOffset > 0 {
 		currentMaxExpirationBlockHeightOffset = mempoolView.GetCurrentGlobalParamsEntry().MaxNonceExpirationBlockHeightOffset
 	}
