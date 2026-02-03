@@ -32,7 +32,7 @@ COPY core/collections ../core/collections
 COPY core/consensus   ../core/consensus
 
 # build rosetta-deso
-RUN GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
+RUN CGO_CFLAGS="-std=gnu11" GOOS=linux go build -mod=mod -a -installsuffix cgo -o bin/rosetta-deso main.go
 
 # create tiny image
 FROM alpine:edge
